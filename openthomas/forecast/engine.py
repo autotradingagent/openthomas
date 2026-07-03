@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import httpx
@@ -71,7 +72,7 @@ class ForecastEngine:
         """`calibrate`: optional fn(p_raw, category) -> p_calibrated from the journal."""
         self.config = config
         self.calibrate = calibrate or (lambda p, category: p)
-        self.http = httpx.Client(timeout=120)
+        self.http = httpx.Client(timeout=config.timeout_s)
 
     # --- provider plumbing -----------------------------------------------------
     def _complete(self, system: str, user: str) -> str:
@@ -81,7 +82,7 @@ class ForecastEngine:
                 (c.base_url or "https://api.anthropic.com") + "/v1/messages",
                 headers={"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"},
                 json={
-                    "model": c.model, "max_tokens": 1024, "temperature": c.temperature,
+                    "model": c.model, "max_tokens": c.max_tokens, "temperature": c.temperature,
                     "system": system, "messages": [{"role": "user", "content": user}],
                 },
             )
@@ -92,7 +93,7 @@ class ForecastEngine:
             (c.base_url or "https://api.openai.com/v1") + "/chat/completions",
             headers={"Authorization": f"Bearer {c.api_key or 'local'}"},
             json={
-                "model": c.model, "temperature": c.temperature,
+                "model": c.model, "temperature": c.temperature, "max_tokens": c.max_tokens,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -130,14 +131,17 @@ class ForecastEngine:
             if news else "",
             lessons=f"Lessons from your own past trades:\n{lessons}\n" if lessons else "",
         )
-        samples: list[dict] = []
-        for _ in range(max(self.config.ensemble_size, 1)):
+        def one_sample(_i: int) -> dict | None:
             try:
-                parsed = self._parse(self._complete(SYSTEM, prompt))
+                return self._parse(self._complete(SYSTEM, prompt))
             except httpx.HTTPError:
-                parsed = None
-            if parsed:
-                samples.append(parsed)
+                return None
+
+        n = max(self.config.ensemble_size, 1)
+        # Samples are independent — run them concurrently (a local reasoning
+        # model can take minutes per call; serial ensembles blow the cycle).
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            samples = [s for s in pool.map(one_sample, range(n)) if s]
         if not samples:
             return None
         probs = [float(s["probability"]) for s in samples]

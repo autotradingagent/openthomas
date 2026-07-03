@@ -70,6 +70,8 @@ class ModelConfig(BaseModel):
     api_key_env: str = "ANTHROPIC_API_KEY"
     ensemble_size: int = 3  # independent forecast samples aggregated per question
     temperature: float = 0.7
+    timeout_s: float = 300.0  # reasoning models on local GPUs can take minutes
+    max_tokens: int = 4096
 
     @property
     def api_key(self) -> str | None:
