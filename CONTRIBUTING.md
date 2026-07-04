@@ -28,6 +28,18 @@ pytest
 - Market-making strategy with adverse-selection controls
 - Training scripts (`scripts/train/`): LoRA fine-tune + honest eval
 
+## Releasing (maintainers)
+
+Publishing is automated via PyPI trusted publishing — no tokens anywhere:
+
+```bash
+# 1. bump `version` in pyproject.toml, commit, push
+# 2. tag and push the tag — CI does the rest (test → build → PyPI → GH release)
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow refuses to publish if the tag doesn't match the pyproject version.
+
 ## AI-agent contributors
 
 PRs written with coding agents are welcome. Keep diffs focused, include the
