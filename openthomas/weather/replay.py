@@ -25,7 +25,11 @@ from .stations import KALSHI_SERIES, STATIONS, Station
 from .strikes import parse_strike
 from .verification import VerificationStore, prior_sigma
 
-SNAPSHOT_UTC_HOUR = 15  # ~11am ET: the morning run is priced in, the day is young
+# Decision snapshots must precede the extreme being bet on. Lows realize at
+# dawn — by 11am the market is quoting a settled fact (the first replay run
+# went 0-for-23 on low series at a 15:00 UTC snapshot). Highs peak
+# mid-afternoon, so late morning is still a live contest.
+SNAPSHOT_UTC_HOUR = {"high": 15, "low": 6}  # ~11am ET / ~1am ET
 REPLAY_LEAD = 1  # freshest guidance that is certainly pre-snapshot
 
 
@@ -42,9 +46,9 @@ class ReplayTrade:
 
 
 def _snapshot_quotes(kalshi: KalshiConnector, series: str, ticker: str,
-                     day: datetime) -> tuple[float, float] | None:
+                     day: datetime, kind: str) -> tuple[float, float] | None:
     """(yes_bid, yes_ask) at the decision snapshot, from hourly candles."""
-    ts = int(day.replace(hour=SNAPSHOT_UTC_HOUR, tzinfo=timezone.utc).timestamp())
+    ts = int(day.replace(hour=SNAPSHOT_UTC_HOUR[kind], tzinfo=timezone.utc).timestamp())
     data = kalshi.http.get(
         f"/series/{series}/markets/{ticker}/candlesticks",
         params={"start_ts": ts - 3600, "end_ts": ts, "period_interval": 60},
@@ -99,7 +103,7 @@ def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: st
         sigma = max(sigma_stat, 0.8 * spread)
         p_model = strike_probability(strike, mean + bias, sigma, kind)
 
-        quotes = _snapshot_quotes(kalshi, series, market.id, day)
+        quotes = _snapshot_quotes(kalshi, series, market.id, day, kind)
         if quotes is None:
             continue
         bid, ask = quotes
