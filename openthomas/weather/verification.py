@@ -90,12 +90,17 @@ class VerificationStore:
             for r in self._rows()
         )
 
-    def errors(self, station: str, kind: str, lead_days: int) -> list[float]:
-        """settled − consensus, one per verified target date at this lead."""
+    def errors(self, station: str, kind: str, lead_days: int,
+               before: str | None = None) -> list[float]:
+        """settled − consensus, one per verified target date at this lead.
+        `before` (ISO date) excludes later days — backtests use it to learn
+        bias strictly out-of-window."""
         guidance: dict[str, float] = {}
         settled: dict[str, float] = {}
         for r in self._rows():
             if r["station"] != station or r["kind"] != kind:
+                continue
+            if before is not None and r["target_date"] >= before:
                 continue
             if r["type"] == "guidance" and r["lead"] == lead_days:
                 guidance[r["target_date"]] = r["mean"]  # last write wins
@@ -104,11 +109,11 @@ class VerificationStore:
         return [settled[d] - guidance[d] for d in guidance.keys() & settled.keys()]
 
     def stats(self, station: str, kind: str, lead_days: int,
-              shrink: float = 10.0) -> tuple[float, float, int]:
+              shrink: float = 10.0, before: str | None = None) -> tuple[float, float, int]:
         """(bias, sigma, n_verified) with shrinkage toward the prior: an empty
         store returns (0, prior, 0); each verified day earns the local stats
         more weight."""
-        errs = self.errors(station, kind, lead_days)
+        errs = self.errors(station, kind, lead_days, before=before)
         n = len(errs)
         prior = prior_sigma(lead_days)
         bias = sum(errs) / (n + shrink) if n else 0.0

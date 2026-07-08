@@ -47,6 +47,10 @@ class Journal:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=5000")
         self.db.executescript(SCHEMA)
+        try:  # v0.2: market price at forecast time — the baseline Brier to beat
+            self.db.execute("ALTER TABLE forecasts ADD COLUMN mid REAL")
+        except sqlite3.OperationalError:
+            pass  # column already present
 
     # --- writes ---------------------------------------------------------------
     def record_fill(self, fill: Fill, market: Market) -> None:
@@ -63,10 +67,10 @@ class Journal:
         self.db.execute(
             "INSERT INTO forecasts (ts, market_id, platform, question, category, p_raw,"
             " p_calibrated, confidence, base_rate, market_gap_reason, invalidation,"
-            " reasoning, model) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " reasoning, model, mid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (_now(), f.market_id, market.platform, market.question, market.category,
              f.p_raw, f.p_calibrated, f.confidence, f.base_rate, f.market_gap_reason,
-             f.invalidation, f.reasoning, f.model),
+             f.invalidation, f.reasoning, f.model, market.mid),
         )
         self.db.commit()
 

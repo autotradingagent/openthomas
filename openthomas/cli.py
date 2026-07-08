@@ -156,6 +156,26 @@ def report():
                           f"{c['win_rate']:.0%}", f"${c['pnl']:+.2f}")
         console.print(table)
 
+    from .report.brier import summarize_skill, weather_skill
+    buckets = weather_skill(j)
+    if buckets:
+        table = Table(title="Weather skill · Brier by station × lead (model vs market)")
+        for col in ("station", "lead", "n", "model", "market", "skill"):
+            table.add_column(col)
+        for b in buckets:
+            table.add_row(
+                b["station"], b["lead"], str(b["n"]), f"{b['brier_model']:.3f}",
+                f"{b['brier_market']:.3f}" if b["brier_market"] is not None else "—",
+                f"{b['skill']:+.0%}" if b["skill"] is not None else "—",
+            )
+        total = summarize_skill(buckets)
+        if total:
+            table.add_row("[bold]ALL[/bold]", "", str(total["n"]),
+                          f"{total['brier_model']:.3f}", f"{total['brier_market']:.3f}",
+                          f"{total['skill']:+.0%}" if total["skill"] is not None else "—")
+        console.print(table)
+        console.print("skill > 0 = beating the market price it traded against.")
+
 
 @app.command()
 def vital(out: str = typer.Option("vital.html", help="output HTML file")):

@@ -1,11 +1,16 @@
-"""Market replay: what would the statistical baseline alone have earned on
-settled temperature markets?
+"""Market replay: what would the live decision rule have earned on settled
+temperature markets?
 
-Prices come from Kalshi hourly candlesticks at a fixed decision snapshot;
-probabilities from hindcast guidance at lead 1 with prior sigma — no station
-bias (that would peek at the settlements being scored), no intraday
-observations, no LLM. Strictly less information than the live agent has, so
-a positive expectancy here is a conservative bound.
+Mirrors the production pipeline, not a fantasy one: station bias/sigma are
+learned strictly BEFORE the replay window (no peeking), the baseline is
+blended 50/50 with the market price exactly as the loop does, and only then
+does the edge bar apply. Prices come from Kalshi hourly candlesticks at a
+fixed decision snapshot. Still conservative vs live: no intraday
+observations, no LLM adjustment, yesterday's model run only.
+
+The first, unblended run of this replay lost -$0.038/contract on 417 trades
+— the market at 11am already knows the morning obs. That number is why the
+market-prior blend is not optional.
 """
 
 from __future__ import annotations
@@ -60,8 +65,14 @@ def _snapshot_quotes(kalshi: KalshiConnector, series: str, ticker: str,
 
 def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: str,
                    station: Station, kind: str, days: int = 30,
-                   min_edge: float = 0.08) -> list[ReplayTrade]:
-    min_close = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
+                   min_edge: float = 0.08,
+                   market_prior_weight: float = 0.5) -> list[ReplayTrade]:
+    window_start = (datetime.now(timezone.utc) - timedelta(days=days))
+    min_close = int(window_start.timestamp())
+    # Bias/sigma learned only from days before the replay window — no peeking.
+    cutoff = window_start.date().isoformat()
+    bias, sigma_stat, _ = store.stats(station.key, kind, REPLAY_LEAD, before=cutoff)
+
     data = kalshi.http.get("/markets", params={
         "series_ticker": series, "status": "settled",
         "min_close_ts": min_close, "limit": 500,
@@ -85,13 +96,15 @@ def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: st
         if guidance is None:
             continue
         mean, spread = guidance
-        sigma = max(prior_sigma(REPLAY_LEAD), 0.8 * spread)
-        p_yes = strike_probability(strike, mean, sigma, kind)
+        sigma = max(sigma_stat, 0.8 * spread)
+        p_model = strike_probability(strike, mean + bias, sigma, kind)
 
         quotes = _snapshot_quotes(kalshi, series, market.id, day)
         if quotes is None:
             continue
         bid, ask = quotes
+        # The loop's rule exactly: the crowd is information, not noise.
+        p_yes = market_prior_weight * (bid + ask) / 2 + (1 - market_prior_weight) * p_model
         outcome_yes = raw["result"] == "yes"
 
         for side, price, p in ((Side.YES, ask, p_yes), (Side.NO, 1 - bid, 1 - p_yes)):

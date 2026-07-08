@@ -97,3 +97,54 @@ def test_rule_track_flags_negative_scope(tmp_path):
     j.db.commit()
     track = b._rules_with_track(j)
     assert "NEGATIVE since adoption" in track
+
+
+# --- bucketed Brier (⑥) -----------------------------------------------------------
+
+def _seed(j, market_id, ts, p, mid, outcome):
+    j.db.execute(
+        "INSERT INTO forecasts (ts, market_id, platform, question, category, p_raw,"
+        " p_calibrated, confidence, mid) VALUES (?,?,?,?,?,?,?,?,?)",
+        (ts, market_id, "kalshi", "q", "climate and weather", p, p, 0.7, mid))
+    j.db.execute(
+        "INSERT INTO settlements VALUES (?, ?, 'kalshi', 'q', 'climate and weather',"
+        " ?, 0, 0, 0)", (market_id, ts, outcome))
+    j.db.commit()
+
+
+def test_weather_skill_buckets_by_station_and_lead(tmp_path):
+    from openthomas.report.brier import summarize_skill, weather_skill
+
+    j = Journal(tmp_path / "j.db")
+    # same-day NYC: model 0.8 (right), market 0.5
+    _seed(j, "KXHIGHNY-26JUL08-T83", "2026-07-08T14:00:00+00:00", 0.8, 0.5, "yes")
+    # lead-1 Miami: model 0.3 (wrong side), market 0.6
+    _seed(j, "KXHIGHMIA-26JUL08-B82.5", "2026-07-07T14:00:00+00:00", 0.3, 0.6, "yes")
+    # non-weather market must be ignored
+    _seed(j, "KXBTC-26JUL08-T100000", "2026-07-08T14:00:00+00:00", 0.5, 0.5, "no")
+
+    buckets = weather_skill(j)
+    assert {(b["station"], b["lead"]) for b in buckets} == {("nyc", "0"), ("mia", "1")}
+    nyc = next(b for b in buckets if b["station"] == "nyc")
+    assert abs(nyc["brier_model"] - 0.04) < 1e-9
+    assert abs(nyc["brier_market"] - 0.25) < 1e-9
+    assert nyc["skill"] > 0.8
+
+    total = summarize_skill(buckets)
+    assert total["n"] == 2
+    # model: (0.04 + 0.49)/2 ; market: (0.25 + 0.16)/2
+    assert abs(total["brier_model"] - 0.265) < 1e-9
+    assert abs(total["brier_market"] - 0.205) < 1e-9
+
+
+def test_forecast_mid_recorded(tmp_path):
+    from openthomas.forecast.engine import Forecast
+    from openthomas.markets.base import Market
+
+    j = Journal(tmp_path / "j.db")
+    m = Market(id="KXHIGHNY-26JUL09-T83", platform="kalshi", question="q",
+               yes_bid=0.40, yes_ask=0.44)
+    j.record_forecast(Forecast(market_id=m.id, p_raw=0.6, p_calibrated=0.62,
+                               confidence=0.7), m)
+    row = j.db.execute("SELECT mid FROM forecasts").fetchone()
+    assert abs(row["mid"] - 0.42) < 1e-9
