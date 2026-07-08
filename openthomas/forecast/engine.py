@@ -95,7 +95,7 @@ class ForecastEngine:
 
     # --- public API --------------------------------------------------------------
     def forecast(self, market: Market, lessons: str = "", news: str = "",
-                 data: str = "") -> Forecast | None:
+                 data: str = "", anchor: tuple[float, float] | None = None) -> Forecast | None:
         """Ensemble forecast: N independent samples, median-aggregated."""
         prompt = PROMPT.format(
             question=market.question,
@@ -125,6 +125,11 @@ class ForecastEngine:
             return None
         probs = [float(s["probability"]) for s in samples]
         p_raw = statistics.median(probs)
+        if anchor is not None:
+            # (baseline, delta): the LLM adjusts a statistical baseline, it
+            # doesn't replace it — clamp the ensemble to baseline ± delta.
+            base, delta = anchor
+            p_raw = min(max(p_raw, base - delta), base + delta)
         best = min(samples, key=lambda s: abs(float(s["probability"]) - p_raw))
         return Forecast(
             market_id=market.id,

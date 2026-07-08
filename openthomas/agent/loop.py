@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from ..config import Settings
 from ..edge.scanner import EdgeScanner, ScanResult
 from ..forecast.calibration import PlattScaler
-from ..forecast.engine import ForecastEngine
+from ..forecast.engine import Forecast, ForecastEngine
 from ..llm import CompletionClient
 from ..markets.base import Action, Market, MarketConnector, Order, Side
 from ..markets.kalshi import KalshiConnector
@@ -24,6 +24,7 @@ from ..memory.lessons import LessonBook
 from ..research.news import NewsDesk
 from ..risk.engine import PortfolioState, RiskEngine
 from ..weather.desk import WeatherDesk
+from ..weather.verification import VerificationStore
 
 
 @dataclass
@@ -58,7 +59,9 @@ class Agent:
         self.forecaster = ForecastEngine(settings.forecaster, calibrate=self._calibrate)
         self.reflector = CompletionClient(settings.reflector or settings.forecaster)
         self.news = NewsDesk() if settings.news_enabled else None
-        self.weather = WeatherDesk()
+        self.weather = WeatherDesk(
+            store=VerificationStore(settings.home / "weather-verification.jsonl")
+        )
 
     # --- calibration -----------------------------------------------------------
     def _calibrate(self, p_raw: float, category: str) -> float:
@@ -116,6 +119,10 @@ class Agent:
         marks = {m.id: m for m in markets}
 
         self._settle(report)
+        try:
+            self.weather.update_verification()
+        except Exception:
+            pass  # verification learning must never block trading
         state = self.portfolio_state(marks)
         report.account_value, report.cash = state.account_value, state.cash
 
@@ -142,18 +149,37 @@ class Agent:
             if market.id in positioned or self.journal.has_recent_forecast(market.id):
                 continue
 
-            news = ""
-            if self.news:
-                try:
-                    news = self.news.brief(market.question, self.s.news_max_articles)
-                except Exception:
-                    pass
-            weather_data = ""
+            assessment = None
             try:
-                weather_data = self.weather.brief(market)
+                assessment = self.weather.assess(market)
             except Exception:
                 pass
-            forecast = self.forecaster.forecast(market, lessons_text, news, data=weather_data)
+
+            if assessment is not None and assessment.decided:
+                # The observation already forces the outcome — no LLM needed.
+                # 0.98/0.02, not 1/0: station obs and the CLI report disagree
+                # by a degree often enough to keep some humility.
+                p = 0.98 if assessment.p_base >= 0.5 else 0.02
+                forecast = Forecast(
+                    market_id=market.id, p_raw=p, p_calibrated=p, confidence=0.9,
+                    reasoning=f"Observation-determined: {assessment.kind} already "
+                              f"{assessment.observed:.1f}°F at {assessment.station.obs_id}",
+                    model="baseline-observation",
+                )
+            else:
+                news = ""
+                if self.news:
+                    try:
+                        news = self.news.brief(market.question, self.s.news_max_articles)
+                    except Exception:
+                        pass
+                anchor = None
+                if assessment is not None and assessment.p_base is not None:
+                    anchor = (assessment.p_base, self.s.weather_anchor_delta)
+                forecast = self.forecaster.forecast(
+                    market, lessons_text, news,
+                    data=assessment.text if assessment else "", anchor=anchor,
+                )
             report.forecasts += 1
             if forecast is None:
                 continue

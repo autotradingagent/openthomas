@@ -282,3 +282,92 @@ def test_forecast_engine_injects_domain_data():
     assert f is not None and f.p_raw == 0.3
     assert "Domain data" in captured["prompt"]
     assert "Model guidance: 83.3°F" in captured["prompt"]
+
+
+# --- baseline (③) ---------------------------------------------------------------
+
+def test_strike_probabilities_partition_to_one():
+    """Kalshi's bucket ladder is a partition of the integer temps — the
+    baseline must distribute exactly one unit of probability across it."""
+    from openthomas.weather.baseline import strike_probability
+    from openthomas.weather.strikes import Strike
+
+    ladder = [Strike("less", hi=76), Strike("between", 76, 77), Strike("between", 78, 79),
+              Strike("between", 80, 81), Strike("between", 82, 83), Strike("greater", lo=83)]
+    total = sum(strike_probability(s, mu=81.4, sigma=2.3, kind="high") for s in ladder)
+    assert abs(total - 1.0) < 1e-9
+
+
+def test_baseline_truncates_at_observed_high():
+    from openthomas.weather.baseline import strike_probability
+    from openthomas.weather.strikes import Strike
+
+    # Observed 84.2 already: ">83" is certain, "82-83" is impossible.
+    assert strike_probability(Strike("greater", lo=83), 82.0, 2.0, "high", observed=84.2) == 1.0
+    assert strike_probability(Strike("between", 82, 83), 82.0, 2.0, "high", observed=84.2) == 0.0
+    # "<76" for a low already observed at 71: not yet certain (evening can still cool).
+    p = strike_probability(Strike("less", hi=76), 74.0, 2.0, "low", observed=71.0)
+    assert p == 1.0  # low can only go DOWN from 71 — already below 76
+
+
+def test_baseline_observed_shifts_mass_upward():
+    from openthomas.weather.baseline import strike_probability
+    from openthomas.weather.strikes import Strike
+
+    s = Strike("greater", lo=83)
+    p_plain = strike_probability(s, 83.0, 2.0, "high")
+    p_bound = strike_probability(s, 83.0, 2.0, "high", observed=83.2)
+    assert p_bound > p_plain  # everything below 83.2 is off the table
+
+
+def test_verification_store_learns_bias(tmp_path):
+    from datetime import date, timedelta
+    from openthomas.weather.verification import VerificationStore, prior_sigma
+
+    store = VerificationStore(tmp_path / "v.jsonl")
+    bias0, sigma0, n0 = store.stats("nyc", "high", 1)
+    assert (bias0, n0) == (0.0, 0) and sigma0 == prior_sigma(1)
+
+    d0 = date(2026, 6, 1)
+    for i in range(20):  # models run 2°F cold at this station
+        day = d0 + timedelta(days=i)
+        store.record_guidance("nyc", "high", day, 1, mean=80.0, spread=1.0,
+                              models={"gfs_seamless": 80.0})
+        store.record_settlement("nyc", "high", day, 82.0)
+    bias, sigma, n = store.stats("nyc", "high", 1)
+    assert n == 20
+    assert 1.2 < bias < 2.0  # shrunk toward 0, pulled toward +2
+    assert store.has_settlement("nyc", "high", d0)
+    assert not store.has_settlement("nyc", "high", d0 + timedelta(days=99))
+
+
+def test_desk_assess_produces_anchored_baseline():
+    desk = WeatherDesk(nws=StubNWS(), meteo=StubMeteo())
+    a = desk.assess(mk(strike_type="between", floor_strike=82.0, cap_strike=83.0))
+    assert a is not None and a.p_base is not None
+    assert 0.0 <= a.p_base <= 1.0
+    assert "Statistical baseline" in a.text
+
+
+def test_desk_assess_decided_when_observation_forces_outcome():
+    class HotNWS:
+        def observed_extreme_today(self, station, kind="high"):
+            return 90.0  # way above every strike
+
+    desk = WeatherDesk(nws=HotNWS(), meteo=StubMeteo())
+    a = desk.assess(mk(strike_type="greater", floor_strike=83.0))
+    if a.day == __import__("datetime").datetime.now().date():  # obs only used same-day
+        assert a.decided and a.p_base == 1.0
+
+
+def test_engine_clamps_to_anchor():
+    from openthomas.config import ModelConfig
+    from openthomas.forecast.engine import ForecastEngine
+
+    class SpyEngine(ForecastEngine):
+        def _complete(self, system, user):
+            return json.dumps({"probability": 0.9, "confidence": 0.8})
+
+    engine = SpyEngine(ModelConfig(ensemble_size=1))
+    f = engine.forecast(mk(), anchor=(0.2, 0.15))
+    assert f.p_raw == 0.35  # 0.9 clamped to baseline+delta

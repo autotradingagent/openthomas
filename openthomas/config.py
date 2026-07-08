@@ -96,6 +96,9 @@ class Settings(BaseModel):
     # a cheap/local endpoint independently of the forecaster. None = same.
     reflector: ModelConfig | None = None
     cycle_minutes: int = 30
+    # How far the LLM may move a weather market's statistical baseline: the
+    # blend thesis again — the model adjusts the statistics, never replaces them.
+    weather_anchor_delta: float = 0.15
     news_enabled: bool = True  # free keyless retrieval (GDELT + Google News RSS)
     news_max_articles: int = 6
     home: Path = HOME

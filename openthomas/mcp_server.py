@@ -111,7 +111,7 @@ def weather_brief(platform: str, market_id: str) -> dict:
     """Settlement station, strike, multi-model NWP guidance, and today's
     observed extreme for a station-temperature market. Empty brief means the
     market isn't a weather market OpenThomas understands."""
-    from .weather import WeatherDesk, parse_strike, station_for_market, target_date
+    from .weather import WeatherDesk
 
     _, _, connectors = _ctx()
     if platform not in connectors:
@@ -119,16 +119,17 @@ def weather_brief(platform: str, market_id: str) -> dict:
     m = connectors[platform].get_market(market_id)
     if m is None:
         return {"error": "market not found"}
-    info = station_for_market(m)
-    if info is None:
+    a = WeatherDesk().assess(m)
+    if a is None:
         return {"brief": "", "station": None}
-    station, kind = info
-    strike = parse_strike(m)
     return {
-        "brief": WeatherDesk().brief(m),
-        "station": {"obs_id": station.obs_id, "name": station.name, "kind": kind},
-        "target_date": target_date(m, station).isoformat(),
-        "yes_covers": strike.describe() if strike else None,
+        "brief": a.text,
+        "station": {"obs_id": a.station.obs_id, "name": a.station.name, "kind": a.kind},
+        "target_date": a.day.isoformat(),
+        "yes_covers": a.strike.describe() if a.strike else None,
+        "baseline_p_yes": a.p_base,
+        "observation_decided": a.decided,
+        "market_mid": m.mid,
     }
 
 
@@ -148,11 +149,14 @@ def forecast_market(platform: str, market_id: str) -> dict:
     agent = Agent(s)
     news = agent.news.brief(m.question, s.news_max_articles) if agent.news else ""
     try:
-        weather_data = agent.weather.brief(m)
+        assessment = agent.weather.assess(m)
     except Exception:
-        weather_data = ""
+        assessment = None
+    anchor = None
+    if assessment is not None and assessment.p_base is not None:
+        anchor = (assessment.p_base, s.weather_anchor_delta)
     f = agent.forecaster.forecast(m, agent.lessons.render_for_prompt(journal), news,
-                                  data=weather_data)
+                                  data=assessment.text if assessment else "", anchor=anchor)
     if f is None:
         return {"error": "forecast failed (all ensemble samples unparseable)"}
     journal.record_forecast(f, m)
