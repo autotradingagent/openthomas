@@ -23,33 +23,34 @@ class Station:
     lon: float
     timezone: str
     aliases: tuple[str, ...]  # lowercase substrings that identify it in a question
+    wfo: str = ""  # forecast office issuing the AFD discussion for this station
 
 
 STATIONS: dict[str, Station] = {
     s.key: s
     for s in [
         Station("nyc", "KNYC", "NYC", "Central Park, NYC", 40.783, -73.967,
-                "America/New_York", ("nyc", "new york", "central park")),
+                "America/New_York", ("nyc", "new york", "central park"), wfo="OKX"),
         Station("aus", "KAUS", "AUS", "Austin-Bergstrom", 30.183, -97.680,
-                "America/Chicago", ("austin",)),
+                "America/Chicago", ("austin",), wfo="EWX"),
         Station("chi", "KMDW", "MDW", "Chicago Midway", 41.786, -87.752,
-                "America/Chicago", ("chicago",)),
+                "America/Chicago", ("chicago",), wfo="LOT"),
         Station("mia", "KMIA", "MIA", "Miami International", 25.788, -80.317,
-                "America/New_York", ("miami",)),
+                "America/New_York", ("miami",), wfo="MFL"),
         Station("lax", "KLAX", "LAX", "Los Angeles International", 33.938, -118.389,
-                "America/Los_Angeles", ("los angeles", "lax")),
+                "America/Los_Angeles", ("los angeles", "lax"), wfo="LOX"),
         Station("phl", "KPHL", "PHL", "Philadelphia International", 39.873, -75.227,
-                "America/New_York", ("philadelphia",)),
+                "America/New_York", ("philadelphia",), wfo="PHI"),
         Station("den", "KDEN", "DEN", "Denver International", 39.847, -104.656,
-                "America/Denver", ("denver",)),
+                "America/Denver", ("denver",), wfo="BOU"),
         # Rules say only "at Dallas"; NWS issues no DAL climate report, so the
         # Dallas-Fort Worth report is the settlement source until proven otherwise.
         Station("dal", "KDFW", "DFW", "Dallas-Fort Worth", 32.898, -97.019,
-                "America/Chicago", ("dallas",)),
+                "America/Chicago", ("dallas",), wfo="FWD"),
         Station("atl", "KATL", "ATL", "Atlanta Hartsfield-Jackson", 33.630, -84.442,
-                "America/New_York", ("atlanta",)),
+                "America/New_York", ("atlanta",), wfo="FFC"),
         Station("sat", "KSAT", "SAT", "San Antonio International", 29.533, -98.464,
-                "America/Chicago", ("san antonio",)),
+                "America/Chicago", ("san antonio",), wfo="EWX"),
     ]
 }
 

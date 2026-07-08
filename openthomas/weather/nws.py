@@ -56,6 +56,24 @@ class NWSClient:
             return None
         return c_to_f(max(temps) if kind == "high" else min(temps))
 
+    def forecast_discussion(self, station: Station, max_chars: int = 1200) -> str:
+        """The near/short-term section of the latest Area Forecast Discussion —
+        the human forecaster's reasoning and stated uncertainty, which is
+        exactly the 'information the baseline cannot see' the LLM adjusts for."""
+        if not station.wfo:
+            return ""
+        resp = self.http.get(f"/products/types/AFD/locations/{station.wfo}")
+        resp.raise_for_status()
+        graph = resp.json().get("@graph", [])
+        if not graph:
+            return ""
+        text = self.http.get(graph[0]["@id"]).json().get("productText", "")
+        # AFD sections start ".NEAR TERM..." / ".SHORT TERM..." and end at "&&".
+        match = re.search(r"\.(NEAR TERM|SHORT TERM|DISCUSSION)[^\n]*\n(.*?)\n\s*&&",
+                          text, re.DOTALL)
+        section = match.group(2).strip() if match else text.strip()
+        return section[:max_chars]
+
     def climate_extreme(self, station: Station, day: date, kind: str = "high") -> float | None:
         """Official high/low °F for `day` from the CLI report — the settlement
         value. None until a report covering that date is issued; a same-day

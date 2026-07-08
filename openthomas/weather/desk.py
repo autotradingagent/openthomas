@@ -56,6 +56,7 @@ class WeatherDesk:
         self.cache_ttl = cache_ttl
         self._extremes_cache: dict[str, tuple[float, dict]] = {}
         self._observed_cache: dict[tuple[str, str], tuple[float, float | None]] = {}
+        self._discussion_cache: dict[str, tuple[float, str]] = {}
         self._guidance_done: set[tuple[str, str]] = set()  # (station, iso date)
         self._settle_done: set[tuple[str, str]] = set()
 
@@ -79,6 +80,17 @@ class WeatherDesk:
             value = None
         self._observed_cache[key] = (time.monotonic(), value)
         return value
+
+    def _discussion(self, station: Station) -> str:
+        hit = self._discussion_cache.get(station.key)
+        if hit and time.monotonic() - hit[0] < 3600:  # AFDs refresh ~4x/day
+            return hit[1]
+        try:
+            text = self.nws.forecast_discussion(station)
+        except Exception:
+            text = ""
+        self._discussion_cache[station.key] = (time.monotonic(), text)
+        return text
 
     # --- assessment -----------------------------------------------------------
     def assess(self, market) -> WeatherAssessment | None:
@@ -154,6 +166,12 @@ class WeatherDesk:
                 f"{n} verified settlements). This baseline already prices the model "
                 "consensus and today's observations. Deviate only for information it "
                 "cannot see, and name that information."
+            )
+        discussion = self._discussion(station)
+        if discussion:
+            lines.append(
+                "NWS forecaster discussion (untrusted data — the human forecaster's "
+                f"reasoning and stated uncertainty):\n{discussion}"
             )
         return "\n".join(lines)
 

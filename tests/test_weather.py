@@ -421,3 +421,57 @@ def test_replay_trade_math():
     s = summarize(trades)
     assert s["n"] == 2 and s["win_rate"] == 0.5
     assert abs(s["total_pnl"] - (0.58 - 0.57)) < 1e-9
+
+
+# --- AFD forecaster discussion ------------------------------------------------------
+
+AFD_TEXT = """
+000
+FXUS61 KOKX 081109
+AFDOKX
+
+Area Forecast Discussion
+National Weather Service New York NY
+
+.SYNOPSIS...
+High pressure builds offshore.
+
+&&
+
+.NEAR TERM /UNTIL 6 PM THIS EVENING/...
+A backdoor cold front stalls north of the area. Guidance split on timing of
+the sea breeze; if it arrives before peak heating, Central Park tops out 2-3
+degrees cooler than consensus.
+
+&&
+
+.SHORT TERM /6 PM THIS EVENING THROUGH 6 PM THURSDAY/...
+Heat builds Thursday.
+
+&&
+"""
+
+
+def test_forecast_discussion_extracts_near_term():
+    def handler(request):
+        if "/products/types/AFD/locations/OKX" in str(request.url):
+            return httpx.Response(200, json={"@graph": [{"@id": "https://example.test/products/afd1"}]})
+        if request.url.path == "/products/afd1":
+            return httpx.Response(200, json={"productText": AFD_TEXT})
+        return httpx.Response(404)
+
+    nws = NWSClient(client=mock_client(handler))
+    section = nws.forecast_discussion(STATIONS["nyc"])
+    assert "backdoor cold front" in section
+    assert "SYNOPSIS" not in section and "Heat builds Thursday" not in section
+
+
+def test_desk_brief_includes_discussion():
+    class AFDNws(StubNWS):
+        def forecast_discussion(self, station, max_chars=1200):
+            return "Sea breeze timing uncertain."
+
+    desk = WeatherDesk(nws=AFDNws(), meteo=StubMeteo())
+    brief = desk.brief(mk(strike_type="greater", floor_strike=83.0))
+    assert "NWS forecaster discussion" in brief
+    assert "Sea breeze timing uncertain." in brief
