@@ -1,29 +1,43 @@
 #!/usr/bin/env bash
 # One Pangu-Weather inference run → OpenThomas local model source.
 #
-# CPU by default (the vLLM server owns the GPUs); a 10-day forecast takes
-# tens of minutes — fine for 2 runs/day. Initial conditions come from ECMWF
-# open data (free, no account). Cron it or run by hand:
-#   scripts/nwp/run_pangu.sh
+# Default: CPU (the vLLM server owns the GPUs); ~1h per run, fine for the
+# 2x/day cadence — ECMWF open-data initial conditions are ~7h stale anyway,
+# so faster inference buys no real latency on this input.
+#
+# --gpu: stop the vLLM container, infer on GPU (~2min), restart it — Tom
+# authorized the stop (2026-07-08). The trading loop is blind to GLM while
+# the container is down, so this mode is for hand-run experiments and the
+# future fast-IC path (NOAA AWS GFS, ~3.5h), not for cron.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"  # resolve before any cd
 NWP_HOME="${OPENTHOMAS_NWP_HOME:-$HOME/.openthomas/nwp}"
 VENV="$NWP_HOME/venv"
+VLLM_CONTAINER="vllm-container"
+
+if [ "${1:-}" = "--gpu" ]; then
+  VENV="$NWP_HOME/venv-gpu"
+  echo "[$(date -Is)] stopping $VLLM_CONTAINER for GPU inference"
+  docker stop "$VLLM_CONTAINER"
+  # Whatever happens below, the LLM server comes back.
+  trap 'echo "[$(date -Is)] restarting $VLLM_CONTAINER"; docker start "$VLLM_CONTAINER"' EXIT
+else
+  # onnxruntime-gpu ignores CUDA_VISIBLE_DEVICES; the CPU venv carries the
+  # CPU build, this is just belt-and-braces.
+  export CUDA_VISIBLE_DEVICES=""
+fi
+
 WORK="$NWP_HOME/runs/$(date -u +%Y%m%dT%H%M)"
 mkdir -p "$WORK"
 cd "$WORK"
 
-# The vLLM server owns all GPU memory; onnxruntime-gpu grabs CUDA by default
-# and dies on a 64MB allocation. Force CPU until VRAM is freed — then delete
-# this line and inference drops from ~1h to ~2min.
-export CUDA_VISIBLE_DEVICES=""
-
-echo "[$(date -Is)] pangu run starting in $WORK"
+echo "[$(date -Is)] pangu run starting in $WORK (venv: $VENV)"
 "$VENV/bin/ai-models" --input ecmwf-open-data \
   --assets "$NWP_HOME/assets" --download-assets \
   --lead-time 168 --path pangu.grib panguweather
 
-"$VENV/bin/python" "$(dirname "$0")/extract_stations.py" pangu.grib --model pangu_local
+"$VENV/bin/python" "$SCRIPT_DIR/extract_stations.py" pangu.grib --model pangu_local
 echo "[$(date -Is)] pangu run done"
 
 # Keep the last few runs only; GRIBs are ~2GB each.
