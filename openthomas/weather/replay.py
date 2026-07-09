@@ -3,27 +3,38 @@ temperature markets?
 
 Mirrors the production pipeline, not a fantasy one: station bias/sigma are
 learned strictly BEFORE the replay window (no peeking), the baseline is
-blended 50/50 with the market price exactly as the loop does, and only then
-does the edge bar apply. Prices come from Kalshi hourly candlesticks at a
-fixed decision snapshot. Still conservative vs live: no intraday
-observations, no LLM adjustment, yesterday's model run only.
+blended with the market price exactly as the loop does, and only then does
+the edge bar apply. Prices come from Kalshi hourly candlesticks at a fixed
+decision snapshot. Still conservative vs live: no intraday observations,
+no LLM adjustment, yesterday's model run only.
 
 The first, unblended run of this replay lost -$0.038/contract on 417 trades
 — the market at 11am already knows the morning obs. That number is why the
 market-prior blend is not optional.
+
+Split into two halves so the self-improvement loop can score many candidate
+decision rules against ONE fetched dataset:
+
+- `collect_rows` (network): everything about a settled market that does not
+  depend on the decision rule — model probability, snapshot quotes, outcome.
+- `decide` (pure): the decision rule itself — blend, edge bar, side pick.
+
+`decide` is part of the frozen evaluator surface (see docs/RSI.md): the
+improvement loop tunes its *parameters*, never its code.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Callable
 
 from ..markets.base import Market, Side
 from ..markets.kalshi import KalshiConnector
 from .baseline import strike_probability
 from .stations import KALSHI_SERIES, STATIONS, Station
 from .strikes import parse_strike
-from .verification import VerificationStore, prior_sigma
+from .verification import VerificationStore
 
 # Decision snapshots must precede the extreme being bet on. Lows realize at
 # dawn — by 11am the market is quoting a settled fact (the first replay run
@@ -31,6 +42,20 @@ from .verification import VerificationStore, prior_sigma
 # mid-afternoon, so late morning is still a live contest.
 SNAPSHOT_UTC_HOUR = {"high": 15, "low": 6}  # ~11am ET / ~1am ET
 REPLAY_LEAD = 1  # freshest guidance that is certainly pre-snapshot
+
+
+@dataclass
+class ReplayRow:
+    """Decision-rule-independent facts about one settled market."""
+
+    ticker: str
+    station: str
+    kind: str
+    day: str  # ISO date the market settles on
+    p_model: float  # baseline P(yes) before any market blend
+    yes_bid: float
+    yes_ask: float
+    outcome_yes: bool
 
 
 @dataclass
@@ -43,6 +68,7 @@ class ReplayTrade:
     p: float  # our P(side wins)
     outcome_win: bool
     pnl: float  # per contract
+    day: str = ""  # ISO settlement date, for held-in/held-out splits
 
 
 def _snapshot_quotes(kalshi: KalshiConnector, series: str, ticker: str,
@@ -67,10 +93,12 @@ def _snapshot_quotes(kalshi: KalshiConnector, series: str, ticker: str,
     return bid, ask
 
 
-def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: str,
-                   station: Station, kind: str, days: int = 30,
-                   min_edge: float = 0.08,
-                   market_prior_weight: float = 0.5) -> list[ReplayTrade]:
+def collect_rows(kalshi: KalshiConnector, store: VerificationStore, series: str,
+                 station: Station, kind: str, days: int = 30) -> list[ReplayRow]:
+    """Fetch the settled markets, guidance, and snapshot quotes for one series.
+
+    Network-heavy and decision-rule-independent: run once, score many rules.
+    """
     window_start = (datetime.now(timezone.utc) - timedelta(days=days))
     min_close = int(window_start.timestamp())
     # Bias/sigma learned only from days before the replay window — no peeking.
@@ -82,7 +110,7 @@ def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: st
         "min_close_ts": min_close, "limit": 500,
     }).json()
 
-    trades: list[ReplayTrade] = []
+    rows: list[ReplayRow] = []
     for raw in data.get("markets", []):
         if raw.get("result") not in ("yes", "no"):
             continue
@@ -107,20 +135,52 @@ def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: st
         if quotes is None:
             continue
         bid, ask = quotes
-        # The loop's rule exactly: the crowd is information, not noise.
-        p_yes = market_prior_weight * (bid + ask) / 2 + (1 - market_prior_weight) * p_model
-        outcome_yes = raw["result"] == "yes"
+        rows.append(ReplayRow(
+            ticker=market.id, station=station.key, kind=kind,
+            day=day.date().isoformat(), p_model=p_model,
+            yes_bid=bid, yes_ask=ask, outcome_yes=raw["result"] == "yes",
+        ))
+    return rows
 
-        for side, price, p in ((Side.YES, ask, p_yes), (Side.NO, 1 - bid, 1 - p_yes)):
-            fee = kalshi.fee(price, 1)
+
+def decide(rows: list[ReplayRow], fee_fn: Callable[[float, int], float],
+           min_edge: float = 0.08,
+           market_prior_weight: float = 0.5) -> list[ReplayTrade]:
+    """Apply the live decision rule to collected rows. Pure and deterministic."""
+    trades: list[ReplayTrade] = []
+    for row in rows:
+        # The loop's rule exactly: the crowd is information, not noise.
+        mid = (row.yes_bid + row.yes_ask) / 2
+        p_yes = market_prior_weight * mid + (1 - market_prior_weight) * row.p_model
+
+        for side, price, p in ((Side.YES, row.yes_ask, p_yes),
+                               (Side.NO, 1 - row.yes_bid, 1 - p_yes)):
+            fee = fee_fn(price, 1)
             if p - price - fee < min_edge or not (0.05 <= price <= 0.95):
                 continue
-            win = outcome_yes if side is Side.YES else not outcome_yes
+            win = row.outcome_yes if side is Side.YES else not row.outcome_yes
             pnl = (1 - price - fee) if win else (-price - fee)
-            trades.append(ReplayTrade(market.id, station.key, side, price, fee,
-                                      p, win, pnl))
+            trades.append(ReplayTrade(row.ticker, row.station, side, price, fee,
+                                      p, win, pnl, day=row.day))
             break  # at most one side per market
     return trades
+
+
+def replay_station(kalshi: KalshiConnector, store: VerificationStore, series: str,
+                   station: Station, kind: str, days: int = 30,
+                   min_edge: float = 0.08,
+                   market_prior_weight: float = 0.5) -> list[ReplayTrade]:
+    rows = collect_rows(kalshi, store, series, station, kind, days)
+    return decide(rows, kalshi.fee, min_edge, market_prior_weight)
+
+
+def collect_all(store: VerificationStore, days: int = 30) -> list[ReplayRow]:
+    """All series' rows in one flat list — the evaluator's frozen dataset."""
+    kalshi = KalshiConnector()
+    rows: list[ReplayRow] = []
+    for series, (station_key, kind) in KALSHI_SERIES.items():
+        rows += collect_rows(kalshi, store, series, STATIONS[station_key], kind, days)
+    return rows
 
 
 def replay_all(store: VerificationStore, days: int = 30,

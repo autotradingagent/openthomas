@@ -245,7 +245,16 @@ class Agent:
     def reflect(self) -> str:
         return self.lessons.reflect(self.journal, self.reflector.complete)
 
+    def improve(self):
+        """One evolution meta-cycle (docs/RSI.md). Mutates settings in place,
+        so promoted parameters take effect from the next trading cycle."""
+        from ..improve.loop import Improver
+        return Improver(self.s, journal=self.journal,
+                        complete_fn=self.reflector.complete).meta_cycle()
+
     def run_forever(self, on_report=None) -> CycleReport:
+        from ..improve.loop import improve_due
+
         while True:
             report = self.cycle()
             if on_report:
@@ -253,6 +262,11 @@ class Agent:
             if report.settlements:
                 try:
                     self.reflect()
+                except Exception:
+                    pass
+                try:  # the slow loop must never take down the fast loop
+                    if improve_due(self.journal):
+                        self.improve()
                 except Exception:
                     pass
             if report.halted:

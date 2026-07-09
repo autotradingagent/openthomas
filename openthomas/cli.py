@@ -258,6 +258,50 @@ def replay(
 
 
 @app.command()
+def improve(
+    days: int = typer.Option(45, help="replay window for the gate"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="score candidates, write nothing"),
+    history: bool = typer.Option(False, "--history", help="show the generation lineage"),
+):
+    """One self-improvement meta-cycle: mine the journal, propose parameter
+    mutations, gate them on leak-free replay, promote or roll back. See
+    docs/RSI.md — the trading loop also runs this daily after settlements."""
+    from .improve.genome import GenerationStore
+    from .improve.loop import Improver
+
+    s = Settings.load()
+    if history:
+        table = Table(title="Generation lineage")
+        for col in ("gen", "parent", "status", "proposer", "params", "note"):
+            table.add_column(col)
+        for g in GenerationStore(s.home).all():
+            table.add_row(str(g.id), "—" if g.parent is None else str(g.parent),
+                          g.status, g.proposer,
+                          " ".join(f"{k.split('.')[-1]}={v}" for k, v in g.params.items()),
+                          (g.rationale or g.note)[:60])
+        console.print(table)
+        return
+
+    report = Improver(s).meta_cycle(days=days, dry_run=dry_run)
+    console.print(f"Replay rows: {report.rows}")
+    if report.rollback:
+        console.print(f"[yellow]ROLLBACK[/yellow] {report.rollback}")
+    for c in report.candidates:
+        mark = "[green]✓[/green]" if c["verdict"] == "pass" else "[dim]✗[/dim]"
+        params = " ".join(f"{k.split('.')[-1]}={v}" for k, v in c["params"].items())
+        console.print(f"{mark} [{c['proposer']}] {params} · "
+                      f"in ${c['held_in'].get('total_pnl', 0):+.2f} / "
+                      f"out ${c['held_out'].get('total_pnl', 0):+.2f}"
+                      + ("" if c["verdict"] == "pass" else f" · {c['verdict']}"))
+    if report.promoted is not None:
+        console.print(f"[green bold]Promoted generation {report.promoted}[/green bold] — {report.reason}")
+    else:
+        console.print(report.reason or "champion holds")
+    if dry_run:
+        console.print("[dim](dry run: nothing written)[/dim]")
+
+
+@app.command()
 def version():
     console.print(f"openthomas {__version__}")
 

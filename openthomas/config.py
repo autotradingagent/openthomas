@@ -125,7 +125,15 @@ class Settings(BaseModel):
     @classmethod
     def load(cls) -> "Settings":
         path = HOME / "config.yaml"
-        if path.exists():
-            data = yaml.safe_load(path.read_text()) or {}
-            return cls(**data)
-        return cls()
+        data = (yaml.safe_load(path.read_text()) or {}) if path.exists() else {}
+        settings = cls(**data)
+        # Layer on the self-improvement loop's active generation — parameter
+        # overrides that cleared the kernel gate on replay (docs/RSI.md).
+        # Bounds-validated at read; any problem at all means "no overrides",
+        # because trading must never fail to start over improvement state.
+        try:
+            from .improve.genome import active_params, apply_params
+            apply_params(settings, active_params(settings.home))
+        except Exception:
+            pass
+        return settings

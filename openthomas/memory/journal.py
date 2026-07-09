@@ -95,6 +95,14 @@ class Journal:
         self.db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES ('peak_value', ?)", (str(peak),))
         self.db.commit()
 
+    def set_kv(self, key: str, value: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, value))
+        self.db.commit()
+
+    def get_kv(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else None
+
     # --- reads ------------------------------------------------------------------
     def positions(self) -> list[Position]:
         """Net open positions from the trade log, excluding settled markets."""

@@ -39,6 +39,10 @@ as a disciplined trading harness around a forecasting brain:
 5. **Learning loop.** Settled trades become training data: post-mortems distill into
    lessons (memory), strategy parameters re-tune from the journal, and — for users with
    GPUs — local models fine-tune on the accumulated forecast/outcome pairs.
+6. **Self-improvement as a gated loop.** OpenThomas updates OpenThomas: an evolution
+   loop mines its own journal, proposes bounded parameter mutations, and must clear a
+   kernel-owned promotion gate on leak-free replay before anything takes effect —
+   with lineage, audit log, and automatic rollback. See [RSI.md](RSI.md).
 
 ## Layers
 
