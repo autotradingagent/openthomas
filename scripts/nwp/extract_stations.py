@@ -56,7 +56,10 @@ def main() -> int:
     rows = 0
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("a") as f:
+    # Per-run copy next to the GRIB: remote orchestration pulls exactly this
+    # run's rows over ssh instead of re-syncing the whole growing store.
+    run_rows = Path(args.grib).parent / "rows.jsonl"
+    with out.open("a") as f, run_rows.open("w") as rf:
         for station in STATIONS.values():
             lon = station.lon % 360 if lons.max() > 180 else station.lon
             point = ds.sel(latitude=station.lat, longitude=lon, method="nearest")
@@ -74,11 +77,13 @@ def main() -> int:
                 if len(values) < MIN_HOURS_PER_DAY / 6:  # Pangu steps are 6-hourly
                     continue
                 for kind, value in (("high", max(values)), ("low", min(values))):
-                    f.write(json.dumps({
+                    line = json.dumps({
                         "station": station.key, "target_date": day, "kind": kind,
                         "model": args.model, "value": round(value, 1),
                         "issued_at": issued_at,
-                    }) + "\n")
+                    }) + "\n"
+                    f.write(line)
+                    rf.write(line)
                     rows += 1
     print(f"wrote {rows} rows for {len(STATIONS)} stations → {out}")
     return 0

@@ -18,10 +18,14 @@ VLLM_CONTAINER="vllm-container"
 
 if [ "${1:-}" = "--gpu" ]; then
   VENV="$NWP_HOME/venv-gpu"
-  echo "[$(date -Is)] stopping $VLLM_CONTAINER for GPU inference"
-  docker stop "$VLLM_CONTAINER"
-  # Whatever happens below, the LLM server comes back.
-  trap 'echo "[$(date -Is)] restarting $VLLM_CONTAINER"; docker start "$VLLM_CONTAINER"' EXIT
+  # On the trading box the vLLM server owns the VRAM — evict it for the run
+  # and guarantee it comes back. On a dedicated GPU box (gpu-host2) there is no
+  # such container and the GPU is simply free.
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$VLLM_CONTAINER"; then
+    echo "[$(date -Is)] stopping $VLLM_CONTAINER for GPU inference"
+    docker stop "$VLLM_CONTAINER"
+    trap 'echo "[$(date -Is)] restarting $VLLM_CONTAINER"; docker start "$VLLM_CONTAINER"' EXIT
+  fi
 else
   # onnxruntime-gpu ignores CUDA_VISIBLE_DEVICES; the CPU venv carries the
   # CPU build, this is just belt-and-braces.
