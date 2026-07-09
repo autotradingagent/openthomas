@@ -16,15 +16,24 @@ NWP environment while the agent stays lean.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-# The station registry, inlined-by-import: keep a single source of truth.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from openthomas.weather.stations import STATIONS  # noqa: E402
+# Load the station registry directly from its file — one source of truth,
+# without importing the openthomas package (whose deps don't live in the
+# heavyweight NWP venv).
+_spec = importlib.util.spec_from_file_location(
+    "ot_stations",
+    Path(__file__).resolve().parents[2] / "openthomas" / "weather" / "stations.py",
+)
+_mod = importlib.util.module_from_spec(_spec)
+sys.modules["ot_stations"] = _mod  # dataclass decorator introspects sys.modules
+_spec.loader.exec_module(_mod)
+STATIONS = _mod.STATIONS
 
 MIN_HOURS_PER_DAY = 18  # partial local days give false extremes
 
