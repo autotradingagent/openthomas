@@ -475,3 +475,26 @@ def test_desk_brief_includes_discussion():
     brief = desk.brief(mk(strike_type="greater", floor_strike=83.0))
     assert "NWS forecaster discussion" in brief
     assert "Sea breeze timing uncertain." in brief
+
+
+# --- local AI-NWP source -----------------------------------------------------------
+
+def test_local_models_merge_into_consensus(tmp_path):
+    from openthomas.weather.localmodels import LocalModelSource
+
+    src = LocalModelSource(tmp_path / "local.jsonl")
+    src.record("nyc", "2026-07-08", "high", "pangu_local", 84.9)
+    src.record("nyc", "2026-07-08", "high", "pangu_local", 85.1)  # newer run wins
+    src.record("mia", "2026-07-08", "high", "pangu_local", 91.0)  # other station
+    from datetime import datetime, timedelta, timezone
+    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+    src.record("nyc", "2026-07-08", "low", "pangu_local", 70.0, issued_at=stale)
+
+    ext = src.extremes("nyc")
+    assert ext["2026-07-08"]["high"] == {"pangu_local": 85.1}
+    assert ext["2026-07-08"].get("low", {}) == {}  # stale run ignored
+
+    desk = WeatherDesk(nws=StubNWS(), meteo=StubMeteo(), local_models=src)
+    a = desk.assess(mk(strike_type="greater", floor_strike=83.0))
+    assert a.model_values.get("pangu_local") == 85.1  # joined the consensus
+    assert "pangu_local: 85.1" in a.text

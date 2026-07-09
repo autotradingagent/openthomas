@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .baseline import hour_factor, strike_probability
+from .localmodels import LocalModelSource
 from .nws import NWSClient
 from .openmeteo import OpenMeteoClient
 from .stations import KALSHI_SERIES, STATIONS, Station, station_for_market, target_date
@@ -49,10 +50,12 @@ class WeatherAssessment:
 
 class WeatherDesk:
     def __init__(self, nws: NWSClient | None = None, meteo: OpenMeteoClient | None = None,
-                 store: VerificationStore | None = None, cache_ttl: float = 900):
+                 store: VerificationStore | None = None,
+                 local_models: LocalModelSource | None = None, cache_ttl: float = 900):
         self.nws = nws or NWSClient()
         self.meteo = meteo or OpenMeteoClient()
         self.store = store  # None → no verification recording (e.g. tests)
+        self.local_models = local_models
         self.cache_ttl = cache_ttl
         self._extremes_cache: dict[str, tuple[float, dict]] = {}
         self._observed_cache: dict[tuple[str, str], tuple[float, float | None]] = {}
@@ -66,6 +69,13 @@ class WeatherDesk:
         if hit and time.monotonic() - hit[0] < self.cache_ttl:
             return hit[1]
         data = self.meteo.daily_extremes(station)
+        if self.local_models is not None:
+            try:  # our own AI-NWP runs join the consensus as extra models
+                for day, kinds in self.local_models.extremes(station.key).items():
+                    for kind, by_model in kinds.items():
+                        data.setdefault(day, {"high": {}, "low": {}})[kind].update(by_model)
+            except Exception:
+                pass
         self._extremes_cache[station.key] = (time.monotonic(), data)
         return data
 

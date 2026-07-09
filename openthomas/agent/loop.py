@@ -59,8 +59,10 @@ class Agent:
         self.forecaster = ForecastEngine(settings.forecaster, calibrate=self._calibrate)
         self.reflector = CompletionClient(settings.reflector or settings.forecaster)
         self.news = NewsDesk() if settings.news_enabled else None
+        from ..weather.localmodels import LocalModelSource
         self.weather = WeatherDesk(
-            store=VerificationStore(settings.home / "weather-verification.jsonl")
+            store=VerificationStore(settings.home / "weather-verification.jsonl"),
+            local_models=LocalModelSource(settings.home / "local-models.jsonl"),
         )
 
     # --- calibration -----------------------------------------------------------
