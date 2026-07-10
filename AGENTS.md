@@ -19,7 +19,11 @@ Python 3.10+, package in `openthomas/`, tests in `tests/` (pytest), deps via
 - `openthomas/improve/` — the evolution loop: propose → gate → promote/rollback
 - `openthomas/site/` — the public build-in-public feed (`feed.json`); the
   static page that renders it is `site/`, deployed by `deploy/` (docs/SITE.md)
-- `openthomas/cli.py` — typer CLI (`init/scan/run/report/vital/publish/improve`)
+- `openthomas/train/` — the journal as a leak-free training set, and the
+  Hugging Face push for datasets and adapters (docs/TRAINING.md). The harness
+  ships to GitHub, the model plane ships to HF (docs/RSI.md).
+- `openthomas/cli.py` — typer CLI
+  (`init/scan/run/report/vital/publish/improve/dataset/push-model`)
 - `openthomas/mcp_server.py` — MCP server (`openthomas-mcp`); paper-only by design
 - `docs/DESIGN.md` — architecture rationale; `docs/EDGE.md` — strategy basis
 
@@ -45,6 +49,10 @@ Python 3.10+, package in `openthomas/`, tests in `tests/` (pytest), deps via
   self-improvement loop must never gain a write path to them, directly or
   indirectly. The LLM proposer returns JSON only; all file writes stay in
   deterministic gate-checked code.
+- Nothing public is published without its evidence. `train/hub.py::push_adapter`
+  refuses weights that lack a held-out score and the dataset revision they were
+  fit on; `site/feed.py` whitelists every field it emits. Both are tested — the
+  rails are the product, not the plumbing.
 
 ## Verify
 

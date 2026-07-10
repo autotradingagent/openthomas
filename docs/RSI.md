@@ -32,6 +32,28 @@ bounds. Sizing, exposure caps, and the kill-switch are safety rails and can
 never enter `PARAM_SPACE`; a kernel policy test
 (`test_param_space_never_touches_safety_rails`) fails any change that tries.
 
+## Two artifacts, two homes
+
+The planes above say *who may write what*. Cutting the same system the other
+way — *what is produced* — gives two artifacts, and they are published in
+different places because they are audited in different ways.
+
+| Artifact | What it is | Where | How you check it |
+|---|---|---|---|
+| **harness** | gate, bounds, risk engine, decision rules, prompts, the evolver | [GitHub](https://github.com/PredictionMarketTrader/openthomas) | read the diff |
+| **model** | LoRA adapters, and the journal rows they were fit on | [Hugging Face](https://huggingface.co/openthomas) | read the training set and the held-out score |
+
+A code change is reviewable as text: you can look at a diff and say whether the
+kill-switch still fires. A weight change is not. Nobody can read a LoRA and tell
+you what it learned, so the only honest way to publish one is to ship the data it
+was trained on and the number it scored on days it never saw. `openthomas
+dataset --push` returns the dataset's commit sha; `openthomas push-model` refuses
+to write a model card that does not cite it alongside a held-out Brier score.
+The chain — weights → dataset revision → journal — is the audit.
+
+Both artifacts face the same gate. A trained adapter is a candidate, not an
+authority (docs/TRAINING.md).
+
 The agent plane can change everything about *how*; it can never change *what
 counts as good*. An optimizer that can edit its own judge will find it easier
 to lower the bar than to clear it — so the judge is not on its edit surface.

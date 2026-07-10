@@ -32,7 +32,8 @@ dependencies = [
 polymarket = ["polymarket-client"]  # official unified SDK (pre-release); py-clob-client is archived
 kalshi = ["cryptography>=42.0"]
 mcp = ["mcp>=1.2"]
-train = ["torch", "transformers", "peft", "datasets"]
+hub = ["huggingface-hub>=0.30"]  # publish datasets/adapters; no torch needed
+train = ["torch", "transformers", "peft", "datasets", "huggingface-hub>=0.30"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mcp>=1.2"]
 
 [project.scripts]

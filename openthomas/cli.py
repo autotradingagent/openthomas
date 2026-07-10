@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -197,6 +199,75 @@ def publish(out: str = typer.Option("site", help="directory to write feed.json i
     path = write_feed(s, out)
     size = path.stat().st_size
     console.print(f"[green]✓[/green] Wrote {path} ({size:,} bytes)")
+
+
+@app.command()
+def dataset(
+    out: str = typer.Option("data/journal.jsonl", help="local JSONL to write"),
+    push: bool = typer.Option(False, "--push", help="also upload to Hugging Face"),
+):
+    """Export the journal as a leak-free training set; optionally publish it.
+
+    Settled markets only, first forecast per market, temporal split carried in
+    the rows. See docs/TRAINING.md."""
+    from .memory.journal import Journal
+    from .train.dataset import build, summary, write_jsonl
+    from .train.hub import aliases
+
+    s = Settings.load()
+    rows = build(Journal(s.db_path), aliases=aliases(s))
+    if not rows:
+        console.print("[yellow]No settled markets yet — nothing to export.[/yellow]")
+        raise typer.Exit(0)
+
+    stats = summary(rows)
+    path = write_jsonl(rows, out)
+    console.print(f"[green]✓[/green] Wrote {path} — {stats['rows']} settled markets "
+                  f"({stats['train']} train / {stats['validation']} validation)")
+    if stats["trainable_rows"] < stats["rows"]:
+        console.print(f"[dim]{stats['rows'] - stats['trainable_rows']} rows carry a label but "
+                      "no prompt inputs (forecast predates journal archiving) — not trainable.[/dim]")
+    if stats["trainable_rows"] < 500:
+        console.print(f"[yellow]Only {stats['trainable_rows']} trainable rows.[/yellow] "
+                      "Below ~500 a fine-tune memorizes noise; Platt scaling is already on.")
+
+    if push:
+        from .train.hub import HubError, push_dataset
+        try:
+            sha = push_dataset(s, rows)
+        except HubError as e:
+            console.print(f"[red]✗[/red] {e}")
+            raise typer.Exit(1) from None
+        from .train.hub import dataset_repo
+        console.print(f"[green]✓[/green] Pushed to "
+                      f"https://huggingface.co/datasets/{dataset_repo(s)} @ [bold]{sha[:12]}[/bold]")
+        console.print("[dim]Cite that revision when you publish an adapter trained on it.[/dim]")
+
+
+@app.command()
+def push_model(
+    adapter: str = typer.Option(..., help="directory holding the trained adapter"),
+    name: str = typer.Option(..., help="model repo name, e.g. openthomas-lora-12b"),
+    base: str = typer.Option(..., help="base model id it adapts"),
+    dataset_revision: str = typer.Option(..., help="dataset commit sha it was fit on"),
+    eval_json: str = typer.Option(..., "--eval", help="JSON file: brier_base, brier_tuned, n_validation"),
+):
+    """Publish a trained adapter to Hugging Face, with the evidence that earns it.
+
+    Refuses without held-out numbers and a dataset revision: a model card
+    without evidence is a claim we cannot support."""
+    import json as _json
+
+    from .train.hub import HubError, push_adapter
+
+    s = Settings.load()
+    try:
+        evaluation = _json.loads(Path(eval_json).read_text())
+        url = push_adapter(s, name, adapter, base, dataset_revision, evaluation)
+    except HubError as e:
+        console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(1) from None
+    console.print(f"[green]✓[/green] Published {url}")
 
 
 @app.command()

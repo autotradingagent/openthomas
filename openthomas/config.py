@@ -103,6 +103,20 @@ class SiteConfig(BaseModel):
     max_reasoning_chars: int = 700  # per-thesis excerpt of model reasoning
 
 
+class HubConfig(BaseModel):
+    """Where the model plane of RSI lives (docs/RSI.md).
+
+    GitHub carries the harness, because a code change is reviewable as a diff.
+    Hugging Face carries the weights and the data they were fit on, because a
+    weight change is not — the only way to judge it is to see its training set
+    and its held-out score.
+    """
+
+    org: str = ""  # "" disables every push; nothing leaves the box by default
+    dataset: str = ""  # defaults to "<org>/journal"
+    private: bool = False
+
+
 class Settings(BaseModel):
     bankroll: float = 1000.0  # USD the agent may deploy; it can never exceed this
     goal: str = "Grow the bankroll steadily; protecting capital beats chasing returns."
@@ -127,6 +141,7 @@ class Settings(BaseModel):
     news_enabled: bool = True  # free keyless retrieval (GDELT + Google News RSS)
     news_max_articles: int = 6
     site: SiteConfig = Field(default_factory=SiteConfig)
+    hub: HubConfig = Field(default_factory=HubConfig)
     home: Path = HOME
 
     @property
