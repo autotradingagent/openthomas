@@ -86,7 +86,47 @@ def main() -> int:
                     rf.write(line)
                     rows += 1
     print(f"wrote {rows} rows for {len(STATIONS)} stations → {out}")
+
+    # A coarse global 2 m temperature grid (°C) for the public globe's heat
+    # field — our own forecast, not a third-party nowcast. Best-effort: a
+    # failure here must not lose the station rows above.
+    try:
+        cells = _write_global_grid(ds, Path(args.grib).parent, issued_at)
+        print(f"wrote global temperature grid ({cells} cells) → tempgrid.json")
+    except Exception as e:  # noqa: BLE001 — telemetry, never fatal
+        print(f"global grid skipped: {e}", file=sys.stderr)
     return 0
+
+
+def _write_global_grid(ds, run_dir: Path, issued_at: str, res: float = 2.5) -> int:
+    """Sample the 2t field onto a regular lon/lat grid at the step whose valid
+    time is nearest now (our model's current-conditions field), °C, and write it
+    beside the GRIB in the same shape the site's Open-Meteo grid uses."""
+    import numpy as np
+    import xarray as xr
+
+    lats = np.arange(-90.0, 90.0 + 1e-6, res)
+    lons = np.arange(-180.0, 180.0, res)
+    src = ds.longitude.values
+    sel_lons = lons % 360 if src.max() > 180 else lons
+
+    vt = ds.valid_time.values.astype("datetime64[s]")
+    now = np.datetime64(datetime.now(timezone.utc).replace(tzinfo=None), "s")
+    idx = int(np.abs(vt - now).argmin())
+
+    field = ds["t2m"].isel(step=idx).sel(
+        latitude=xr.DataArray(lats, dims="y"),
+        longitude=xr.DataArray(sel_lons, dims="x"), method="nearest")
+    celsius = field.values - 273.15  # (y, x)
+    grid = {
+        "lat0": float(lats[0]), "lon0": float(lons[0]),
+        "dlat": res, "dlon": res, "ny": int(len(lats)), "nx": int(len(lons)),
+        "temps": [round(float(v), 1) for v in celsius.reshape(-1)],
+        "as_of": str(vt[idx]) + "+00:00", "issued": issued_at,
+        "source": "OpenThomas · Pangu-Weather",
+    }
+    (run_dir / "tempgrid.json").write_text(json.dumps(grid))
+    return len(grid["temps"])
 
 
 if __name__ == "__main__":

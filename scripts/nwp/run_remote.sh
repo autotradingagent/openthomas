@@ -52,3 +52,14 @@ RUN=$(ssh "${SSH_OPTS[@]}" "$HOST" 'ls -dt ~/.openthomas/nwp/runs/* | head -1')
 mkdir -p "$(dirname "$OUT")"
 ssh "${SSH_OPTS[@]}" "$HOST" "cat '$RUN/rows.jsonl'" >> "$OUT"
 echo "[$(date -Is)] merged $(ssh "${SSH_OPTS[@]}" "$HOST" "wc -l < '$RUN/rows.jsonl'") rows from $HOST → $OUT"
+
+# Pull the global temperature grid too — our own forecast field for the site's
+# heatmap. Best-effort: an older run may predate it, and a missing grid just
+# leaves the globe on the Open-Meteo nowcast.
+GRID="$HOME/.openthomas/pangu-tempgrid.json"
+if ssh "${SSH_OPTS[@]}" "$HOST" "test -f '$RUN/tempgrid.json'"; then
+  ssh "${SSH_OPTS[@]}" "$HOST" "cat '$RUN/tempgrid.json'" > "$GRID"
+  echo "[$(date -Is)] pulled Pangu temperature grid → $GRID"
+else
+  echo "[$(date -Is)] no tempgrid.json in $RUN (older run?) — globe stays on Open-Meteo"
+fi

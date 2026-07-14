@@ -426,7 +426,9 @@ function renderGlobe(feed) {
   const tsrc = $('[data-f="temperature.source"]');
   const legend = document.querySelector(".templegend");
   if (feed.temperature) {
-    if (tsrc) tsrc.textContent = `current temp · ${ago(feed.temperature.as_of)} · Open-Meteo`;
+    const t = feed.temperature, src = t.source || "Open-Meteo";
+    const kind = /pangu/i.test(src) ? "our forecast" : "current temp";
+    if (tsrc) tsrc.textContent = `${kind}${t.as_of ? " · valid " + ago(t.as_of) : ""} · ${src}`;
     if (legend) legend.style.display = "";
   } else if (legend) { legend.style.display = "none"; }
 }

@@ -28,9 +28,20 @@ def _cache_path(home: Path | str) -> Path:
 
 
 def global_grid(home: Path | str) -> dict | None:
-    """The cached grid, or None if never fetched. Read-only — safe in the feed."""
+    """The temperature grid the globe wears, or None. Read-only — safe in the feed.
+
+    Our own Pangu forecast field wins when the NWP pipeline has produced one
+    (pangu-tempgrid.json, synced from the GPU box); otherwise the Open-Meteo
+    nowcast cache. The grid carries its own `source`, so the site labels it
+    honestly either way.
+    """
+    home = Path(home)
     try:
-        return json.loads(_cache_path(home).read_text())["grid"]
+        return json.loads((home / "pangu-tempgrid.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        return json.loads((home / "tempgrid.json").read_text())["grid"]
     except (OSError, json.JSONDecodeError, KeyError):
         return None
 
@@ -80,7 +91,7 @@ def refresh(home: Path | str, max_age_s: int = 1800) -> dict | None:
 
     grid = {
         "lat0": lats[0], "lon0": lons[0], "dlat": DLAT, "dlon": DLON,
-        "ny": len(lats), "nx": len(lons), "as_of": now(),
+        "ny": len(lats), "nx": len(lons), "as_of": now(), "source": "Open-Meteo",
         "temps": [round(t, 1) if t is not None else None for t in temps],
     }
     try:

@@ -219,10 +219,18 @@ def test_feed_carries_the_cached_temperature_grid_without_fetching(settings):
     assert build_feed(settings, Journal(settings.db_path))["temperature"] is None
 
     grid = {"lat0": -90, "lon0": -180, "dlat": 10, "dlon": 10, "ny": 19, "nx": 36,
-            "temps": [12.0] * (19 * 36), "as_of": "2026-07-14T03:00:00+00:00"}
+            "temps": [12.0] * (19 * 36), "source": "Open-Meteo", "as_of": "2026-07-14T03:00:00+00:00"}
     (settings.home / "tempgrid.json").write_text(_json.dumps({"_t": 1, "grid": grid}))
     got = build_feed(settings, Journal(settings.db_path))["temperature"]
-    assert got["nx"] == 36 and got["ny"] == 19 and len(got["temps"]) == 684
+    assert got["nx"] == 36 and got["source"] == "Open-Meteo" and len(got["temps"]) == 684
+
+    # our own Pangu forecast field wins over the Open-Meteo nowcast when present
+    (settings.home / "pangu-tempgrid.json").write_text(_json.dumps(
+        {"lat0": -90, "lon0": -180, "dlat": 2.5, "dlon": 2.5, "ny": 73, "nx": 144,
+         "temps": [15.0] * (73 * 144), "source": "OpenThomas · Pangu-Weather",
+         "as_of": "2026-07-14T12:00:00+00:00"}))
+    got = build_feed(settings, Journal(settings.db_path))["temperature"]
+    assert got["source"] == "OpenThomas · Pangu-Weather" and got["nx"] == 144
 
 
 def test_status_reports_liveness_from_the_heartbeat(settings):
