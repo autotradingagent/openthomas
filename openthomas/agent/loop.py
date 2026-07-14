@@ -20,6 +20,8 @@ from ..markets.base import Action, Market, MarketConnector, Order, Side
 from ..markets.kalshi import KalshiConnector
 from ..markets.paper import InsufficientLiquidity, PaperBroker
 from ..markets.polymarket import PolymarketConnector
+from ..memory.board import Board
+from ..memory.heartbeat import Heartbeat
 from ..memory.journal import Journal
 from ..memory.lessons import LessonBook
 from ..memory.usage import UsageLedger
@@ -60,6 +62,8 @@ class Agent:
         self._scalers: dict[str, PlattScaler] = {}
         self._improving: threading.Thread | None = None
         self.usage = UsageLedger(settings.home)
+        self.heartbeat = Heartbeat(settings.home)
+        self.board = Board(settings.home)
         self.forecaster = ForecastEngine(settings.forecaster, calibrate=self._calibrate,
                                          prompt_fn=lambda: settings.forecast_prompt,
                                          usage_sink=self.usage.record)
@@ -147,6 +151,10 @@ class Agent:
                 report.rejections.append(f"{connector.platform}: sync failed ({e})")
         report.markets_seen = len(markets)
         marks = {m.id: m for m in markets}
+        try:
+            self.board.write(markets)  # snapshot the whole book for the public globe
+        except Exception:
+            pass  # telemetry, never a reason to skip a cycle
 
         self._settle(report)
         try:
@@ -322,8 +330,10 @@ class Agent:
         self._improving.start()
 
     def run_forever(self, on_report=None) -> CycleReport:
+        self.heartbeat.start()
         while True:
             report = self.cycle()
+            self.heartbeat.beat()  # proves the loop is live and dates this run
             if on_report:
                 on_report(report)
             if report.settlements:

@@ -28,6 +28,64 @@ def test_openai_provider_hits_chat_completions():
     assert client.complete("sys", "user") == "p=0.4"
 
 
+def test_openai_retries_through_a_restarting_endpoint(monkeypatch):
+    """vLLM refusing connections then answering 503 while it reloads must be
+    ridden through, not dropped — the sample should still return."""
+    monkeypatch.setattr("openthomas.llm.time.sleep", lambda *_: None)  # no real backoff
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectError("connection refused", request=request)
+        if calls["n"] == 2:
+            return httpx.Response(503, text="model loading")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "0.4"}}]})
+
+    client = CompletionClient(
+        ModelConfig(provider="openai", model="glm-5.2", base_url="http://x/v1", retries=4),
+        http=http_client(handler),
+    )
+    assert client.complete("s", "u") == "0.4"
+    assert calls["n"] == 3  # connect-error, 503, then success
+
+
+def test_openai_gives_up_after_exhausting_retries(monkeypatch):
+    monkeypatch.setattr("openthomas.llm.time.sleep", lambda *_: None)
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        raise httpx.ConnectError("down", request=request)
+
+    client = CompletionClient(
+        ModelConfig(provider="openai", model="m", base_url="http://x/v1", retries=2),
+        http=http_client(handler),
+    )
+    with pytest.raises(httpx.ConnectError):
+        client.complete("s", "u")
+    assert calls["n"] == 3  # initial try + 2 retries
+
+
+def test_openai_does_not_retry_a_client_error(monkeypatch):
+    """A 400 is our mistake; retrying wastes the recovering window on a request
+    that will fail the same way every time."""
+    monkeypatch.setattr("openthomas.llm.time.sleep", lambda *_: None)
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        return httpx.Response(400, text="bad request")
+
+    client = CompletionClient(
+        ModelConfig(provider="openai", model="m", base_url="http://x/v1", retries=4),
+        http=http_client(handler),
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        client.complete("s", "u")
+    assert calls["n"] == 1  # no retry on 4xx
+
+
 def test_anthropic_provider_hits_messages():
     def handler(request):
         assert request.url.path == "/v1/messages"

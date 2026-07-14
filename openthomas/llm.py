@@ -15,15 +15,22 @@ a frontier API — or everything rides an existing subscription.
 from __future__ import annotations
 
 import json
+import random
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import httpx
 
 from .config import ModelConfig
 from .memory.usage import Usage, now
+
+# HTTP statuses worth retrying: the server is up but not ready (vLLM still
+# loading the model → 503), momentarily overloaded (429), or a proxy blipped
+# (502/504). A 400/401/404 is our fault and will not fix itself on retry.
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 def extract_json(text: str) -> dict | None:
@@ -82,28 +89,56 @@ class CompletionClient:
         )
 
     # --- HTTP providers ----------------------------------------------------------
+    def _post(self, url: str, headers: dict, payload: dict) -> dict:
+        """POST with bounded retry, so a restarting endpoint is waited out, not
+        dropped. Retries connection errors and RETRY_STATUS responses with
+        exponential backoff; re-raises the last error once retries run out so
+        the caller (forecaster, reflector) skips the sample as it always has.
+
+        Local reasoning servers go away for tens of seconds when they reload a
+        model or recover from an OOM. Without this, every forecast in that
+        window returns None and the cycle trades nothing; with it, the sample
+        blocks a few seconds and succeeds the moment the server is back."""
+        c = self.config
+        last: Exception | None = None
+        for attempt in range(max(c.retries, 0) + 1):
+            if attempt:
+                # jitter breaks the lockstep of an N-sample ensemble all
+                # retrying against the same recovering server at once.
+                delay = min(c.retry_backoff_s * 2 ** (attempt - 1), c.retry_max_s)
+                time.sleep(delay * (0.7 + 0.6 * random.random()))
+            try:
+                resp = self.http.post(url, headers=headers, json=payload)
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as e:
+                last = e
+                if e.response.status_code not in RETRY_STATUS:
+                    raise  # 4xx: our request is wrong; retrying cannot help
+            except httpx.TransportError as e:
+                last = e  # connect refused / timeout / reset — the server may be back soon
+        raise last  # type: ignore[misc]
+
     def _anthropic(self, system: str, user: str) -> str:
         c = self.config
-        resp = self.http.post(
+        body = self._post(
             (c.base_url or "https://api.anthropic.com") + "/v1/messages",
-            headers={"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"},
-            json={
+            {"x-api-key": c.api_key or "", "anthropic-version": "2023-06-01"},
+            {
                 "model": c.model, "max_tokens": c.max_tokens, "temperature": c.temperature,
                 "system": system, "messages": [{"role": "user", "content": user}],
             },
         )
-        resp.raise_for_status()
-        body = resp.json()
         u = body.get("usage") or {}
         self._record(u.get("input_tokens"), u.get("output_tokens"),
                      u.get("cache_read_input_tokens"))
         return body["content"][0]["text"]
 
     def _openai(self, system: str, user: str) -> str:
-        resp = self.http.post(
+        body = self._post(
             (self.config.base_url or "https://api.openai.com/v1") + "/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key or 'local'}"},
-            json={
+            {"Authorization": f"Bearer {self.config.api_key or 'local'}"},
+            {
                 "model": self.config.model, "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens,
                 "messages": [
@@ -113,8 +148,6 @@ class CompletionClient:
                 **self.config.extra_body,
             },
         )
-        resp.raise_for_status()
-        body = resp.json()
         u = body.get("usage") or {}
         self._record(u.get("prompt_tokens"), u.get("completion_tokens"),
                      (u.get("prompt_tokens_details") or {}).get("cached_tokens"))

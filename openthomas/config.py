@@ -73,6 +73,14 @@ class ModelConfig(BaseModel):
     temperature: float = 0.7
     timeout_s: float = 600.0  # reasoning models on local GPUs can take minutes
     max_tokens: int = 4096
+    # Ride through a transient endpoint outage instead of dropping the sample.
+    # A local vLLM server restarting (model reload, OOM recovery) refuses
+    # connections or answers 503 for tens of seconds; retrying with backoff
+    # lets a forecast wait it out rather than skipping the whole cycle. Only
+    # connection errors and 5xx/429 are retried — a 400 will never fix itself.
+    retries: int = 4
+    retry_backoff_s: float = 1.5  # exponential: 1.5, 3, 6, 12 … capped at retry_max_s
+    retry_max_s: float = 20.0
     # Extra JSON merged into OpenAI-compatible request bodies — e.g. vLLM's
     # chat_template_kwargs to toggle a model's thinking mode.
     extra_body: dict = Field(default_factory=dict)
@@ -99,6 +107,7 @@ class SiteConfig(BaseModel):
     model_label: str = ""  # "" falls back to the forecaster's configured model id
     model_url: str = ""  # where the weights live, e.g. a Hugging Face repo
     max_theses: int = 12  # open positions + live edges shown
+    max_board: int = 500  # weather markets plotted on the globe
     max_curve_points: int = 500  # equity curve is downsampled to this
     max_reasoning_chars: int = 700  # per-thesis excerpt of model reasoning
 
