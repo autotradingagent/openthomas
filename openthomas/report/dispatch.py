@@ -1,27 +1,29 @@
-"""The daily dispatch: one honest post about how the agent is doing, ready for X.
+"""The daily dispatch: a short, honest field note on how the agent is doing,
+published to the site as a running log and copy-pasteable to X.
 
-Build in public means the losses ship too. This assembles a short status update
-straight from the journal — the same source the public feed reads, never a fresh
-mark-to-market — so a stale-but-true number never becomes a fresh-but-invented
-one. It is templated, not written by a model: the account this speaks for should
-be able to post every day at zero token cost, and a deterministic summary can't
-hallucinate a profit we didn't make.
+Build in public means the losses ship too. Each day's entry is templated from
+the journal — the same source the public feed reads — so it costs no model
+tokens and can't claim a profit the record doesn't show. Today's entry refreshes
+as the day trades; once the date rolls over it freezes, and the log becomes an
+uneditable timeline of what was claimed, when.
 
-`daily_text` returns the draft; `post_to_x` publishes it. Nothing is sent unless
-a caller asks — posting is outward-facing and irreversible, so it is opt-in, gated
-on credentials that live in the environment and never in the repo.
+`daily_report` builds one day's entry and `ensure_today` upserts it into the log
+the feed publishes. There is no auto-post: the operator copies the `tweet` line
+to X by hand, so nothing leaves the box without a human.
 """
 
 from __future__ import annotations
 
-import os
-from datetime import datetime, timezone
+import json
+from datetime import date, datetime, timezone
+from pathlib import Path
 
 from ..config import Settings
 from ..memory.journal import Journal
 
 SITE = "openthomas.com"
 LIMIT = 280  # X's per-post character ceiling
+MAX_REPORTS = 30  # entries carried in the public feed; the log on disk keeps all
 
 
 def _money(v: float) -> str:
@@ -29,17 +31,55 @@ def _money(v: float) -> str:
     return f"{'+' if v >= 0 else '-'}${abs(v):,.0f}"
 
 
-def _today(journal: Journal, day: str) -> list[dict]:
+def _log_path(home: Path | str) -> Path:
+    return Path(home) / "reports.jsonl"
+
+
+def read_reports(home: Path | str, limit: int | None = None) -> list[dict]:
+    """Every recorded dispatch, newest first, one per day (last write wins)."""
+    path = _log_path(home)
+    if not path.exists():
+        return []
+    by_date: dict[str, dict] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        by_date[entry["date"]] = entry  # a re-run for a date replaces its row
+    out = sorted(by_date.values(), key=lambda e: e["date"], reverse=True)
+    return out[:limit] if limit else out
+
+
+def record_report(home: Path | str, entry: dict) -> None:
+    """Upsert one day's entry, rewriting the log so a date keeps a single row.
+
+    Written atomically (temp file, rename): the publisher reads this file while
+    the next cycle rewrites it, and a half-written log is a wrong log.
+    """
+    by_date = {r["date"]: r for r in read_reports(home)}
+    by_date[entry["date"]] = entry
+    rows = sorted(by_date.values(), key=lambda r: r["date"])
+    path = _log_path(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".jsonl.tmp")
+    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    tmp.replace(path)
+
+
+def _today_settlements(journal: Journal, day: str) -> list[dict]:
     return [s for s in journal.recent_settlements(limit=200) if s["ts"][:10] == day]
 
 
 def daily_text(journal: Journal, settings: Settings, day: str | None = None) -> str:
-    """The build-in-public post for `day` (UTC date, defaults to today).
+    """The X-ready line for `day` (UTC date, defaults to today).
 
     Headline and link are always kept; the day's activity and the standing call
     are added only while they fit under the character limit, longest-lived facts
-    first. Everything is drawn from settled, recorded state — no claim here that
-    isn't already on the page the link points to.
+    first. Everything is drawn from settled, recorded state.
     """
     from ..site.feed import _theses  # local import: avoids a feed→dispatch cycle
 
@@ -54,7 +94,7 @@ def daily_text(journal: Journal, settings: Settings, day: str | None = None) -> 
     link = f"{SITE} — every claim timestamped before it settles"
 
     optional: list[str] = []
-    today = _today(journal, day)
+    today = _today_settlements(journal, day)
     if today:
         line = f"Today: {len(today)} settled, {_money(sum(s['pnl'] for s in today))}."
         if stats["n"]:
@@ -68,8 +108,6 @@ def daily_text(journal: Journal, settings: Settings, day: str | None = None) -> 
     theses = _theses(journal, settings)
     if theses:
         t = theses[0]
-        # Prefer the place (a city says where the weather is); fall back to a short
-        # question snippet for global markets a station lookup can't pin.
         subject = (t.get("loc") or {}).get("place") or t["question"].rstrip("? ")[:34]
         optional.append(f"Widest call: {subject} {t['side']} — we say "
                         f"{t['p_model'] * 100:.0f}¢ vs market {t['p_market'] * 100:.0f}¢.")
@@ -81,40 +119,66 @@ def daily_text(journal: Journal, settings: Settings, day: str | None = None) -> 
     return "\n".join([*body, link])
 
 
-def _x_credentials() -> dict[str, str] | None:
-    """OAuth 1.0a user-context keys from the environment, or None if incomplete.
+def daily_report(journal: Journal, settings: Settings, day: str | None = None) -> dict:
+    """One day's field note: a short prose body for the site, plus the `tweet`
+    line to copy to X, plus the numbers behind it. Same journal, same day."""
+    from ..site.feed import _theses
 
-    Kept out of the repo and out of config.yaml on purpose: a key that can post
-    as the account is exactly what OSS hygiene says never ships. Set them in the
-    process env (e.g. ~/.openthomas/env, sourced by the runner)."""
-    keys = ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
-    vals = {k: os.environ.get(k, "") for k in keys}
-    return vals if all(vals.values()) else None
+    day = day or datetime.now(timezone.utc).date().isoformat()
+    curve = journal.equity_curve()
+    value = curve[-1][1] if curve else settings.bankroll
+    ret = value / settings.bankroll - 1 if settings.bankroll else 0.0
+    stats = journal.settlement_stats()
+    today = _today_settlements(journal, day)
+    day_pnl = sum(s["pnl"] for s in today)
+    wins = sum(1 for s in today if s["pnl"] >= 0)
+    held = len(journal.positions())
+
+    start = curve[0][0][:10] if curve else day
+    n = (date.fromisoformat(day) - date.fromisoformat(start)).days + 1
+
+    body = [f"Paper book at ${value:,.2f}, {ret:+.2%} since the "
+            f"${settings.bankroll:,.0f} start."]
+    if today:
+        s = "" if len(today) == 1 else "s"
+        body.append(f"{len(today)} market{s} resolved today for {_money(day_pnl)} "
+                    f"({wins} won, {len(today) - wins} lost). Realized to date "
+                    f"{_money(stats['pnl'])} over {stats['n']} settled, "
+                    f"{stats['win_rate']:.0%} of them winners.")
+    else:
+        s = "" if held == 1 else "s"
+        body.append(f"Nothing resolved today; {held} position{s} open, "
+                    f"{_money(stats['pnl'])} realized so far over {stats['n']} settled.")
+
+    theses = _theses(journal, settings)
+    if theses:
+        t = theses[0]
+        subject = (t.get("loc") or {}).get("place") or t["question"].rstrip("? ")[:60]
+        line = (f"Widest standing call: {subject} — the model reads "
+                f"{t['p_model'] * 100:.0f}¢ against the market's "
+                f"{t['p_market'] * 100:.0f}¢ on {t['side'].upper()}.")
+        if t.get("why"):
+            line += f" {t['why']}"
+        body.append(line)
+
+    return {
+        "date": day,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "title": f"Day {max(n, 1)} · {ret:+.2%}, {held} held",
+        "tweet": daily_text(journal, settings, day=day),
+        "body": body,
+        "stats": {"account_value": round(value, 2), "return_pct": round(ret, 6),
+                  "day_pnl": round(day_pnl, 2), "settled_today": len(today),
+                  "positions": held},
+    }
 
 
-def post_to_x(text: str, settings: Settings | None = None) -> str:
-    """Publish `text` to X, returning the post URL. Raises if it cannot.
+def ensure_today(journal: Journal, settings: Settings, day: str | None = None) -> dict:
+    """Build today's dispatch and upsert it into the log the feed publishes.
 
-    Uses tweepy (an optional dependency) with credentials from the environment.
-    A missing library or missing keys is a setup problem, not a runtime one, so
-    it fails loudly with the fix rather than silently dropping the post.
-    """
-    creds = _x_credentials()
-    if creds is None:
-        raise RuntimeError(
-            "X credentials not set. Export X_API_KEY / X_API_SECRET / "
-            "X_ACCESS_TOKEN / X_ACCESS_SECRET (a write-enabled app) before --to-x."
-        )
-    try:
-        import tweepy  # optional: `pip install tweepy`
-    except ImportError as e:
-        raise RuntimeError("Posting to X needs tweepy — `pip install tweepy`.") from e
-
-    client = tweepy.Client(
-        consumer_key=creds["X_API_KEY"], consumer_secret=creds["X_API_SECRET"],
-        access_token=creds["X_ACCESS_TOKEN"], access_token_secret=creds["X_ACCESS_SECRET"],
-    )
-    resp = client.create_tweet(text=text)
-    tweet_id = resp.data["id"]
-    handle = (settings.site.x_handle if settings else "") or "i"
-    return f"https://x.com/{handle}/status/{tweet_id}"
+    Called on every publish: today's entry stays current as the day trades, and
+    freezes into the timeline once the date rolls over (past days are never
+    rebuilt — only the row for `day` is replaced)."""
+    entry = daily_report(journal, settings, day=day)
+    record_report(settings.home, entry)
+    return entry

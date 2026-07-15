@@ -31,11 +31,12 @@ from ..memory import board as board_store
 from ..memory import heartbeat
 from ..memory.journal import Journal
 from ..memory.usage import UsageLedger, summarize
+from ..report import dispatch
 from ..report.vital import max_drawdown
 from ..weather.geo import locate
 from ..weather.temps import global_grid
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _downsample(curve: list[tuple[str, float]], limit: int) -> list[list]:
@@ -437,6 +438,14 @@ def _performance(journal: Journal, settings: Settings,
     }
 
 
+def _reports(settings: Settings) -> list[dict]:
+    """The daily dispatch log — build-in-public field notes, newest first.
+
+    Every field is templated from the journal upstream (see report/dispatch.py),
+    so nothing here escapes the same whitelist the rest of the feed obeys."""
+    return dispatch.read_reports(settings.home, dispatch.MAX_REPORTS)
+
+
 def _track_record(journal: Journal) -> list[dict]:
     return [
         {"ts": s["ts"], "platform": s["platform"], "question": s["question"],
@@ -563,6 +572,7 @@ def build_feed(settings: Settings, journal: Journal | None = None) -> dict:
         "theses": _theses(journal, settings),
         "track_record": _track_record(journal),
         "activity": _activity(journal),
+        "reports": _reports(settings),
         "rsi": _rsi(settings),
         "compute": _compute(settings, journal, status),
         "links": {
@@ -574,11 +584,20 @@ def build_feed(settings: Settings, journal: Journal | None = None) -> dict:
 
 
 def publish(settings: Settings, out_dir: str | Path) -> Path:
-    """Write feed.json atomically — the site reads this file while we rewrite it."""
+    """Write feed.json atomically — the site reads this file while we rewrite it.
+
+    Refresh today's dispatch first so the daily field note ships with the feed on
+    the same cron; past days are already frozen in the log and are not rebuilt.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    journal = Journal(settings.db_path)
+    try:
+        dispatch.ensure_today(journal, settings)
+    except Exception:  # a dispatch hiccup must never block the feed itself
+        pass
     path = out / "feed.json"
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(build_feed(settings), indent=1, ensure_ascii=False) + "\n")
+    tmp.write_text(json.dumps(build_feed(settings, journal), indent=1, ensure_ascii=False) + "\n")
     tmp.replace(path)
     return path

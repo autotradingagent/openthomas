@@ -128,7 +128,7 @@ def test_publish_writes_feed_json_atomically(settings, tmp_path):
     Journal(settings.db_path)
     path = publish(settings, tmp_path / "site")
     assert path.name == "feed.json"
-    assert json.loads(path.read_text())["schema_version"] == 3
+    assert json.loads(path.read_text())["schema_version"] == 4
     assert not list(path.parent.glob("*.tmp"))
 
 

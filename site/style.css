@@ -286,6 +286,35 @@ h1 { font: 600 clamp(30px, 5vw, 54px)/1 var(--mono); letter-spacing: -.045em; ma
 .act-kind[data-k="sell"] { color: var(--mercury); border-color: color-mix(in srgb, var(--mercury) 45%, transparent); }
 .act-kind[data-k="settle"] { color: var(--gain); border-color: color-mix(in srgb, var(--gain) 40%, transparent); }
 
+/* --- field notes: the daily dispatch blog ----------------------------------- */
+.note { border: 1px solid var(--rule); background: var(--ink); padding: 24px 26px 22px;
+        margin-bottom: 14px; }
+.note:last-child { margin-bottom: 0; }
+.note-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.note-date { font-size: var(--lab); letter-spacing: .14em; text-transform: uppercase;
+             color: var(--vapor); font-variant-numeric: tabular-nums; }
+.note-title { font: 600 20px/1.2 var(--mono); letter-spacing: -.02em; margin: 0; }
+.note-body { font: 400 16px/1.65 var(--serif); color: var(--paper); margin: 0 0 10px;
+             max-width: 76ch; text-wrap: pretty; }
+.note-body:last-of-type { margin-bottom: 0; }
+.note-x { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 16px;
+          margin-top: 18px; padding: 14px 16px; border: 1px solid var(--rule);
+          background: color-mix(in srgb, var(--panel) 55%, transparent); }
+.note-x-lab { font-size: var(--lab); letter-spacing: .16em; text-transform: uppercase;
+              color: var(--vapor); padding-top: 3px; }
+.note-x-text { font: 400 13px/1.55 var(--mono); color: var(--vapor); white-space: pre-wrap;
+               margin: 0; }
+.note-copy { font: 500 var(--lab)/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+             color: var(--paper); background: transparent; border: 1px solid var(--rule);
+             padding: 9px 14px; cursor: pointer; white-space: nowrap;
+             transition: border-color .15s, color .15s; }
+.note-copy:hover { border-color: var(--frost); color: var(--frost); }
+.note-copy.ok { border-color: var(--gain); color: var(--gain); }
+@media (max-width: 620px) {
+  .note-x { grid-template-columns: 1fr; }
+  .note-copy { justify-self: start; }
+}
+
 /* --- self-improvement -------------------------------------------------------- */
 .gen { border: 1px solid var(--rule); padding: 24px 26px; margin-bottom: 26px; }
 .gen-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;

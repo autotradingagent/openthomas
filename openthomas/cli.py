@@ -191,34 +191,25 @@ def vital(out: str = typer.Option("vital.html", help="output HTML file")):
 
 
 @app.command()
-def post(
-    to_x: bool = typer.Option(False, "--to-x", help="actually publish to X (needs creds in env)"),
-    day: str = typer.Option("", help="count 'today' relative to this UTC date (YYYY-MM-DD)"),
-):
-    """Draft the daily build-in-public post; with --to-x, publish it to X.
+def dispatch(day: str = typer.Option("", help="build for this UTC date (YYYY-MM-DD)")):
+    """Write today's build-in-public field note to the site log and print the
+    X-ready line to copy by hand.
 
-    Templated from the journal, so it costs no model tokens and cannot claim a
-    profit the record doesn't show. Without --to-x it only prints the draft to
-    copy or eyeball; with --to-x it posts via the X API using credentials from
-    the environment. Wire it to cron for a daily update.
+    Templated from the journal — no tokens, no auto-posting. `openthomas publish`
+    (the site cron) refreshes today's note on its own, so you rarely need this;
+    run it to preview the entry or grab the line for X. Today's note stays
+    current until the date rolls over, then freezes into the public timeline.
     """
     from .memory.journal import Journal
-    from .report.dispatch import LIMIT, daily_text, post_to_x
+    from .report.dispatch import LIMIT, ensure_today
 
     s = Settings.load()
-    text = daily_text(Journal(s.db_path), s, day=day or None)
-    console.print(f"[dim]{'─' * 48}[/dim]")
-    console.print(text)
-    console.print(f"[dim]{'─' * 48}  {len(text)}/{LIMIT} chars[/dim]")
-    if not to_x:
-        console.print("[dim]Draft only. Re-run with --to-x to publish.[/dim]")
-        return
-    try:
-        url = post_to_x(text, s)
-        console.print(f"[green]✓[/green] Posted to X: {url}")
-    except RuntimeError as e:
-        console.print(f"[red]✗[/red] {e}")
-        raise typer.Exit(1)
+    entry = ensure_today(Journal(s.db_path), s, day=day or None)
+    console.print(f"[bold]{entry['title']}[/bold]")
+    for para in entry["body"]:
+        console.print(para)
+    console.print(f"\n[dim]── copy to X  ({len(entry['tweet'])}/{LIMIT}) ──[/dim]")
+    console.print(entry["tweet"])
 
 
 @app.command()

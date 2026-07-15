@@ -14,7 +14,7 @@
 <link rel="preload" href="fonts/sourceserif4-var.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Bump ?v on every deploy: assets are cached 5 min, index.html is no-cache, so a
      new version query busts the stale JS/CSS the moment the new HTML loads. -->
-<link rel="stylesheet" href="style.css?v=t11">
+<link rel="stylesheet" href="style.css?v=t12">
 </head>
 <body>
 
@@ -132,6 +132,15 @@
     <dl class="stats" id="stats-slot"></dl>
   </section>
 
+  <section class="section" aria-labelledby="notes-h">
+    <div class="eyebrow"><span id="notes-h">Field notes</span><span class="eyebrow-rule"></span>
+      <span class="eyebrow-n" data-f="notes.count"></span></div>
+    <p class="section-lede">A daily build-in-public log, straight from the journal: the day's
+      result, what's still open, and the call the agent is most alone on. The top line of each
+      note is written to copy to X.</p>
+    <div id="notes-slot"></div>
+  </section>
+
   <section class="section" aria-labelledby="outlook-h">
     <div class="eyebrow"><span id="outlook-h">Open claims</span><span class="eyebrow-rule"></span>
       <span class="eyebrow-n" data-f="theses.count"></span></div>
@@ -194,9 +203,9 @@
   </div>
 </footer>
 
-<script src="world.js?v=t11"></script>
-<script src="borders.js?v=t11"></script>
-<script src="globe.js?v=t11"></script>
-<script src="app.js?v=t11"></script>
+<script src="world.js?v=t12"></script>
+<script src="borders.js?v=t12"></script>
+<script src="globe.js?v=t12"></script>
+<script src="app.js?v=t12"></script>
 </body>
 </html>

@@ -315,6 +315,50 @@ function renderActivity(feed) {
   slot.append(rows);
 }
 
+/* --- field notes: the daily dispatch blog -----------------------------------
+   One entry per day, newest first: a short prose read of the day plus the exact
+   line to copy to X. The report is templated on the trading box; this only
+   renders it and lends a copy button. */
+function copyForX(text, btn) {
+  const flash = () => { const was = btn.textContent; btn.textContent = "Copied"; btn.classList.add("ok");
+    setTimeout(() => { btn.textContent = was; btn.classList.remove("ok"); }, 1400); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(flash).catch(() => legacyCopy(text, flash));
+  } else { legacyCopy(text, flash); }
+}
+function legacyCopy(text, done) {
+  const t = el("textarea"); t.value = text; t.setAttribute("readonly", "");
+  t.style.position = "fixed"; t.style.opacity = "0"; document.body.append(t);
+  t.select(); try { document.execCommand("copy"); } catch (e) { /* clipboard blocked */ }
+  t.remove(); done();
+}
+function renderNotes(feed) {
+  const items = (feed.reports || []).slice(0, 7);
+  const slot = $("#notes-slot");
+  $('[data-f="notes.count"]').textContent = items.length || "";
+  slot.textContent = "";
+  if (!items.length) {
+    slot.append(el("p", "empty", "The first dispatch posts on the next cycle."));
+    return;
+  }
+  for (const r of items) {
+    const note = el("article", "note");
+    const head = el("div", "note-head");
+    head.append(el("span", "note-date", r.date), el("h3", "note-title", r.title));
+    note.append(head);
+    for (const para of r.body || []) note.append(el("p", "note-body", para));
+
+    const box = el("div", "note-x");
+    box.append(el("span", "note-x-lab", "for X"), el("p", "note-x-text", r.tweet));
+    const btn = el("button", "note-copy", "Copy for X");
+    btn.type = "button";
+    btn.addEventListener("click", () => copyForX(r.tweet, btn));
+    box.append(btn);
+    note.append(box);
+    slot.append(note);
+  }
+}
+
 /* --- self-improvement -------------------------------------------------------- */
 function renderRsi(feed) {
   const slot = $("#rsi-slot");
@@ -850,6 +894,7 @@ function applyFeed(feed) {
   renderPositions(feed);
   renderTrack(feed);
   renderActivity(feed);
+  renderNotes(feed);
   renderRsi(feed);
   renderCompute(feed);
   renderLive(feed);

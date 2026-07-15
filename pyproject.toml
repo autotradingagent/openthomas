@@ -33,7 +33,6 @@ polymarket = ["polymarket-client"]  # official unified SDK (pre-release); py-clo
 kalshi = ["cryptography>=42.0"]
 mcp = ["mcp>=1.2"]
 hub = ["huggingface-hub>=0.30"]  # publish datasets/adapters; no torch needed
-x = ["tweepy>=4.14"]  # `openthomas post --to-x`; drafting the post needs nothing
 train = ["torch", "transformers", "peft", "datasets", "huggingface-hub>=0.30"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4", "mcp>=1.2"]
 
