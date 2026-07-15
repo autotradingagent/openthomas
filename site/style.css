@@ -659,8 +659,12 @@ h1 { font: 600 clamp(30px, 5vw, 54px)/1 var(--mono); letter-spacing: -.045em; ma
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--vapor) 22%, transparent) transparent;
 }
-.home-brand-col { border-right: 1px solid var(--rule); justify-content: center; }
+.home-brand-col { border-right: 1px solid var(--rule); }
 .home-metrics { border-left: 1px solid var(--rule); }
+.home-brand-mid { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; }
+.home-brand-foot { flex: none; margin: 0; padding-top: 16px; border-top: 1px solid var(--rule);
+                   font-size: var(--lab); letter-spacing: .12em; text-transform: uppercase;
+                   color: var(--vapor); text-wrap: balance; }
 .home-brand-col::-webkit-scrollbar, .home-metrics::-webkit-scrollbar { width: 8px; }
 .home-brand-col::-webkit-scrollbar-track, .home-metrics::-webkit-scrollbar-track { background: transparent; }
 .home-brand-col::-webkit-scrollbar-thumb, .home-metrics::-webkit-scrollbar-thumb {
