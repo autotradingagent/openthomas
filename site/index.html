@@ -9,12 +9,14 @@
 <meta property="og:description" content="An open-source, recursively self-improving agent turning probabilistic forecasts into disciplined trades on prediction markets. Non-custodial, with explicit risk limits.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://openthomas.com">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23070a12'/><circle cx='16' cy='16' r='9' fill='%232860a8'/><circle cx='13' cy='13' r='9' fill='%23070a12'/></svg>">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=t15">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=t15">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=t15">
 <link rel="preload" href="fonts/plexmono-500.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/sourceserif4-var.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Bump ?v on every deploy: assets are cached 5 min, index.html is no-cache, so a
      new version query busts the stale JS/CSS the moment the new HTML loads. -->
-<link rel="stylesheet" href="style.css?v=t14">
+<link rel="stylesheet" href="style.css?v=t15">
 </head>
 <body>
 
@@ -24,7 +26,9 @@
      routes so the static host needs no rewrite rules; app.js shows one view. -->
 <header class="nav" id="nav">
   <div class="nav-in">
-    <a class="nav-brand" href="#/">OpenThomas</a>
+    <a class="nav-brand" href="#/">
+      <img class="nav-logo" src="logo.png?v=t15" alt="" width="26" height="26">
+      <span>OpenThomas</span></a>
     <nav class="nav-links" aria-label="Primary">
       <a href="#/" data-route="home">Home</a>
       <a href="#/positions" data-route="positions">Positions</a>
@@ -53,7 +57,10 @@
     <div class="home-grid">
       <aside class="home-panel">
         <div class="home-brand">
-          <h1 class="home-title">OpenThomas</h1>
+          <div class="home-brand-top">
+            <img class="home-logo" src="logo.png?v=t15" alt="Thomas Bayes" width="46" height="46">
+            <h1 class="home-title">OpenThomas</h1>
+          </div>
           <p class="home-tag">An open-source, recursively self&#8209;improving (RSI) agent that turns
             probabilistic forecasts — weather and events — into disciplined trades on prediction
             markets. Funds stay non&#8209;custodial; every risk limit is explicit and enforced.</p>
@@ -267,9 +274,9 @@
   </div>
 </footer>
 
-<script src="world.js?v=t14"></script>
-<script src="borders.js?v=t14"></script>
-<script src="globe.js?v=t14"></script>
-<script src="app.js?v=t14"></script>
+<script src="world.js?v=t15"></script>
+<script src="borders.js?v=t15"></script>
+<script src="globe.js?v=t15"></script>
+<script src="app.js?v=t15"></script>
 </body>
 </html>
