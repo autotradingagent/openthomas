@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from .baseline import hour_factor, strike_probability
+from .gencast import GencastSpread
 from .localmodels import LocalModelSource
 from .nws import NWSClient
 from .openmeteo import OpenMeteoClient
@@ -77,11 +78,13 @@ class WeatherAssessment:
 class WeatherDesk:
     def __init__(self, nws: NWSClient | None = None, meteo: OpenMeteoClient | None = None,
                  store: VerificationStore | None = None,
-                 local_models: LocalModelSource | None = None, cache_ttl: float = 900):
+                 local_models: LocalModelSource | None = None,
+                 gencast_spread: GencastSpread | None = None, cache_ttl: float = 900):
         self.nws = nws or NWSClient()
         self.meteo = meteo or OpenMeteoClient()
         self.store = store  # None → no verification recording (e.g. tests)
         self.local_models = local_models
+        self.gencast_spread = gencast_spread  # flow-dependent sigma from the ensemble
         self.cache_ttl = cache_ttl
         self._extremes_cache: dict[str, tuple[float, dict]] = {}
         self._observed_cache: dict[tuple[str, str], tuple[float, float | None]] = {}
@@ -156,9 +159,14 @@ class WeatherDesk:
             values = list(by_model.values())
             mean = statistics.mean(values)
             spread = statistics.stdev(values) if len(values) > 1 else 0.0
+            # GenCast's ensemble scales the learned sigma by this day's flow-
+            # dependent uncertainty (wider on genuinely uncertain days); 1.0 when
+            # no fresh ensemble covers it.
+            flow = (self.gencast_spread.factor(station.key, day.isoformat(), kind, lead)
+                    if self.gencast_spread is not None else 1.0)
             # Day-specific disagreement can exceed climatological error; never
             # let sigma collapse entirely — obs/CLI quirks alone are ~1°F.
-            sigma = max(0.8, sigma_stat * hour_factor(kind, now_local, day == now_local.date()),
+            sigma = max(0.8, sigma_stat * flow * hour_factor(kind, now_local, day == now_local.date()),
                         0.8 * spread)
             if strike:
                 p_base = strike_probability(strike, mean + bias, sigma, kind, observed)

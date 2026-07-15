@@ -264,6 +264,53 @@ def test_desk_caches_per_station_day():
     assert CountingMeteo.calls == 1
 
 
+# --- gencast ensemble spread ---------------------------------------------------
+
+def _spread_file(tmp_path, spread, ref, hours_ago=0):
+    from datetime import timedelta
+    p = tmp_path / "gencast-spread.json"
+    p.write_text(json.dumps({
+        "issued_at": (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat(),
+        "ref_sigma": ref, "spread": spread,
+    }))
+    return p
+
+
+def test_gencast_spread_factor_clamped(tmp_path):
+    from openthomas.weather.gencast import GencastSpread
+    p = _spread_file(tmp_path, {"nyc": {"2026-07-08": {"high": 3.0, "low": 0.5}}},
+                     {"0": 1.0, "1": 2.0})
+    gs = GencastSpread(p)
+    assert gs.factor("nyc", "2026-07-08", "high", 0) == 1.6   # 3.0/1.0 -> CEIL
+    assert gs.factor("nyc", "2026-07-08", "low", 0) == 0.7    # 0.5/1.0 -> FLOOR
+    assert gs.factor("mia", "2026-07-08", "high", 0) == 1.0   # station absent
+    assert gs.factor("nyc", "2026-07-08", "high", 5) == 1.0   # no ref for that lead
+    assert GencastSpread(tmp_path / "nope.json").factor("nyc", "2026-07-08", "high", 0) == 1.0
+
+
+def test_gencast_spread_stale_ignored(tmp_path):
+    from openthomas.weather.gencast import GencastSpread
+    p = _spread_file(tmp_path, {"nyc": {"2026-07-08": {"high": 3.0}}}, {"0": 1.0}, hours_ago=48)
+    assert GencastSpread(p).factor("nyc", "2026-07-08", "high", 0) == 1.0
+
+
+def test_desk_sigma_widens_with_uncertain_ensemble(tmp_path):
+    from openthomas.weather.gencast import GencastSpread
+    m = mk(strike_type="greater", floor_strike=83.0)
+    station, _ = station_for_market(m)
+    base = WeatherDesk(nws=StubNWS(), meteo=StubMeteo()).assess(m)
+    p = _spread_file(tmp_path, {station.key: {"2026-07-08": {"high": 3.0, "low": 0.5}}}, {"0": 1.0})
+    wide = WeatherDesk(nws=StubNWS(), meteo=StubMeteo(),
+                       gencast_spread=GencastSpread(p)).assess(m)
+    assert base.sigma is not None and wide.sigma is not None
+    assert wide.sigma > base.sigma * 1.4          # a genuinely uncertain day widens sigma
+    # tight ensemble narrows it back toward the floor
+    q = _spread_file(tmp_path, {station.key: {"2026-07-08": {"high": 0.3, "low": 0.3}}}, {"0": 1.0})
+    tight = WeatherDesk(nws=StubNWS(), meteo=StubMeteo(),
+                        gencast_spread=GencastSpread(q)).assess(m)
+    assert tight.sigma < base.sigma
+
+
 # --- forecast engine wiring -------------------------------------------------------
 
 def test_forecast_engine_injects_domain_data():

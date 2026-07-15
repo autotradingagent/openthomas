@@ -22,6 +22,7 @@
 #
 #   run_gencast.sh [members] [date YYYYMMDD] [time HHMM] [lead_h] [model]
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"  # resolve before any cd
 GCX_HOME="${OPENTHOMAS_GENCAST_HOME:-$HOME/.openthomas/gencast}"
 VENV="$GCX_HOME/venv-gc"
 MEMBERS="${1:-8}"; DATE="${2:-}"; TIME="${3:-0000}"; LEAD="${4:-168}"; MODEL="${5:-gencast-1.0}"
@@ -39,6 +40,10 @@ echo "[$(date -Is)] $MODEL, $MEMBERS members, init ${DATE} ${TIME}z, lead ${LEAD
   --download-assets --assets "$GCX_HOME" --lead-time "$LEAD" --path gencast.grib \
   "$MODEL" --num-ensemble-members "$MEMBERS"
 echo "[$(date -Is)] gencast run done → $WORK/gencast.grib ($MEMBERS members)"
+
+# Distil the ensemble into per-station flow-dependent spread for the desk.
+"$VENV/bin/python" "$SCRIPT_DIR/extract_gencast.py" gencast.grib
+echo "[$(date -Is)] wrote gencast-spread.json"
 
 # Keep the last few runs only; ensemble GRIBs are large.
 ls -dt "$GCX_HOME"/runs/* | tail -n +4 | xargs -r rm -rf

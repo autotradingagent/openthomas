@@ -71,9 +71,11 @@ class Agent:
                                           usage_sink=self.usage.record, node="reflect")
         self.news = NewsDesk() if settings.news_enabled else None
         from ..weather.localmodels import LocalModelSource
+        from ..weather.gencast import GencastSpread
         self.weather = WeatherDesk(
             store=VerificationStore(settings.home / "weather-verification.jsonl"),
             local_models=LocalModelSource(settings.home / "local-models.jsonl"),
+            gencast_spread=GencastSpread(settings.home / "gencast-spread.json"),
         )
 
     # --- calibration -----------------------------------------------------------
