@@ -897,6 +897,7 @@ function renderChrome(feed) {
     if (!href) continue;
     const a = el("a", null, label);
     a.href = href;
+    a.target = "_blank";
     a.rel = "noopener";
     nav.append(a);
   }

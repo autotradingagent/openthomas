@@ -650,6 +650,11 @@ h1 { font: 600 clamp(30px, 5vw, 54px)/1 var(--mono); letter-spacing: -.045em; ma
               padding: clamp(20px, 2.4vw, 32px); border-right: 1px solid var(--rule);
               background: color-mix(in srgb, var(--ink) 66%, transparent); }
 .home-grid .home-globe { height: 100%; min-height: 0; overflow: hidden; }
+.home-brand { display: flex; flex-direction: column; gap: 8px; }
+.home-title { font: 600 20px/1 var(--mono); letter-spacing: -.02em; margin: 0; color: var(--paper); }
+.home-tag { font: 400 14px/1.55 var(--serif); color: var(--vapor); margin: 0; text-wrap: pretty; }
+.home-homage { margin: 0; font: italic 400 12px/1.4 var(--serif);
+               color: color-mix(in srgb, var(--vapor) 78%, transparent); }
 .home-value .mast-num { text-shadow: none; }
 .home-value .mast-delta { text-shadow: none; }
 .home-charts { display: flex; flex-direction: column; gap: 16px; }

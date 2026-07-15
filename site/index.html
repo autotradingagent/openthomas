@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenThomas — a weather-trading agent, in public</title>
-<meta name="description" content="An autonomous agent that forecasts station temperatures and trades them on Kalshi and Polymarket. Every weather market it watches, mapped on a live globe; every claim published before it settles.">
+<title>OpenThomas — a self-improving forecasting & trading agent, in public</title>
+<meta name="description" content="OpenThomas is an open-source, recursively self-improving (RSI) agent that turns probabilistic forecasts — weather and events — into disciplined trades on prediction markets (Kalshi, Polymarket). Funds stay non-custodial; risk limits are explicit and enforced. Named for Thomas Bayes.">
 <meta property="og:title" content="OpenThomas">
-<meta property="og:description" content="An autonomous agent that trades weather. Every market it watches, mapped on a live globe.">
+<meta property="og:description" content="An open-source, recursively self-improving agent turning probabilistic forecasts into disciplined trades on prediction markets. Non-custodial, with explicit risk limits.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://openthomas.com">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23070a12'/><circle cx='16' cy='16' r='9' fill='%232860a8'/><circle cx='13' cy='13' r='9' fill='%23070a12'/></svg>">
@@ -14,7 +14,7 @@
 <link rel="preload" href="fonts/sourceserif4-var.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Bump ?v on every deploy: assets are cached 5 min, index.html is no-cache, so a
      new version query busts the stale JS/CSS the moment the new HTML loads. -->
-<link rel="stylesheet" href="style.css?v=t13">
+<link rel="stylesheet" href="style.css?v=t14">
 </head>
 <body>
 
@@ -35,11 +35,11 @@
     </nav>
     <div class="nav-right">
       <a class="nav-icon" href="https://github.com/PredictionMarketTrader/openthomas"
-         rel="noopener" aria-label="Source code on GitHub" title="Source code on GitHub">
+         target="_blank" rel="noopener" aria-label="Source code on GitHub" title="Source code on GitHub">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
       </a>
       <a class="nav-icon nav-icon-hf" href="https://huggingface.co/openthomas"
-         rel="noopener" aria-label="Open models &amp; datasets on Hugging Face"
+         target="_blank" rel="noopener" aria-label="Open models &amp; datasets on Hugging Face"
          title="Open models &amp; datasets on Hugging Face"><span aria-hidden="true">🤗</span></a>
     </div>
   </div>
@@ -52,6 +52,13 @@
   <section class="view view-home" data-view="home">
     <div class="home-grid">
       <aside class="home-panel">
+        <div class="home-brand">
+          <h1 class="home-title">OpenThomas</h1>
+          <p class="home-tag">An open-source, recursively self&#8209;improving (RSI) agent that turns
+            probabilistic forecasts — weather and events — into disciplined trades on prediction
+            markets. Funds stay non&#8209;custodial; every risk limit is explicit and enforced.</p>
+          <p class="home-homage">Named for Thomas Bayes.</p>
+        </div>
         <div class="home-value">
           <div class="mast-num" data-f="performance.account_value">—</div>
           <div class="mast-delta" data-f="performance.return_line">—</div>
@@ -226,9 +233,10 @@
 
       <section class="section" aria-labelledby="rsi-h">
         <div class="eyebrow"><span id="rsi-h">Self-improvement</span><span class="eyebrow-rule"></span></div>
-        <p class="section-lede">OpenThomas rewrites its own decision parameters. A change ships only
-          after it beats the champion on leak-free replay of held-out days — and rolls back if live
-          results disagree. Nothing below was chosen by a human.</p>
+        <p class="section-lede">Recursive self-improvement (RSI), the literal kind: OpenThomas
+          rewrites its own decision parameters. A change ships only after it beats the champion on
+          leak-free replay of held-out days — and rolls back if live results disagree. Nothing below
+          was chosen by a human.</p>
         <div id="rsi-slot"></div>
       </section>
 
@@ -259,9 +267,9 @@
   </div>
 </footer>
 
-<script src="world.js?v=t13"></script>
-<script src="borders.js?v=t13"></script>
-<script src="globe.js?v=t13"></script>
-<script src="app.js?v=t13"></script>
+<script src="world.js?v=t14"></script>
+<script src="borders.js?v=t14"></script>
+<script src="globe.js?v=t14"></script>
+<script src="app.js?v=t14"></script>
 </body>
 </html>
