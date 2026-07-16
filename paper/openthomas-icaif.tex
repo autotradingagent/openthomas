@@ -43,40 +43,32 @@ Agent for Weather Prediction Markets}
 }
 
 \begin{abstract}
-Every frontier language model that has been given real capital to trade
-prediction markets autonomously has lost money. We argue this is not a
-forecasting-accuracy problem but a \emph{harness} problem: the profitable
-signature in the record is selectivity, sized asymmetry, exit discipline, and
-calibration --- properties of the trading system around the model, not of the
-model itself. We present \textbf{OpenThomas}, an open-source autonomous agent
-built to be that harness, and deliberately pointed at the one market category
-where a harness can be measured cleanly: daily station-temperature markets on
-Kalshi and Polymarket. Weather markets settle daily against an objective public
-record (the U.S. National Weather Service climatological report for a named
-station), which makes them a \emph{strong-evaluator} domain: dense, objective,
-and reproducible in leak-free replay. OpenThomas prices every strike from a
-consensus of seven operational global numerical-weather-prediction (NWP) models
-plus its own GraphCast point forecast and GenCast ensemble; learns each
-station's systematic bias and spread from leak-free hindcasts; lets a language
-model make a \emph{bounded} adjustment; blends with the market prior; and sizes
-every position with fractional Kelly under hard, deterministic risk limits the
-model can never override. On top of this, the system improves itself: an
-evolution loop mines its own journal, proposes bounded mutations, and must clear
-a kernel-owned promotion gate on leak-free replay before anything takes effect
---- with the evaluator structurally off the agent's edit surface, so
-self-improvement cannot redefine ``improvement.'' In a 21-day leak-free replay
-against real historical order books with fees (968 settled markets, 2026-06-24 to
-07-14), a naked model-vs-market rule barely loses (\$0.007/contract over 425
-trades); adding learned station bias and then a market-prior blend turns
-expectancy positive (\$0.028/contract) by trading less than half as often (184
-trades) --- selectivity, not the model, is the edge, and this is before any of the
-live-only advantages are switched on. We report the losing rows as well as the
-gains,
-and run the reference agent in public. Our contributions are (i) the
-harness-is-the-edge thesis operationalized as a concrete, reproducible system;
-(ii) a leak-free hindcast/replay evaluation methodology for market agents; and
-(iii) a self-improvement architecture whose safety derives from keeping the
-judge off the edit surface, evaluated on a domain with a genuinely strong judge.
+Every frontier language model given real capital to trade prediction markets
+autonomously has lost money. We argue this is a \emph{harness} problem, not a
+forecasting-accuracy one: the profitable signature is selectivity, sized
+asymmetry, exit discipline, and calibration --- properties of the system around
+the model, not the model itself. We present \textbf{OpenThomas}, an open-source
+agent built to be that harness and pointed at the one category where a harness is
+measurable: daily station-temperature markets on Kalshi and Polymarket, which
+settle daily against an objective public record (the U.S. National Weather
+Service report for a named station). That makes them a \emph{strong-evaluator}
+domain --- dense, objective, and reproducible in leak-free replay. OpenThomas
+prices each strike from a seven-model numerical-weather-prediction consensus plus
+its own GraphCast and GenCast forecasts, learns each station's systematic bias
+from leak-free hindcasts, lets a language model make a \emph{bounded} adjustment,
+blends with the market prior, and sizes with fractional Kelly under hard risk
+limits the model cannot override. It also improves itself: an evolution loop
+proposes bounded mutations that must clear a kernel-owned gate on leak-free
+replay, with the evaluator kept off the agent's edit surface so self-improvement
+cannot redefine ``improvement.'' In a 21-day replay on real order books with fees
+(968 settled markets), a naked model-vs-market rule barely loses
+(\$0.007/contract, 425 trades) while a market-prior blend turns expectancy
+positive ($+$\$0.028) by trading less than half as often (184 trades):
+selectivity, not the model, is the edge. We report the losing rows too.
+Contributions: (i) the harness-is-the-edge thesis as a concrete, reproducible
+system; (ii) a leak-free hindcast/replay methodology for market agents; and (iii)
+a self-improvement architecture whose safety derives from keeping the judge off
+the edit surface, evaluated on a domain with a strong judge.
 \end{abstract}
 
 \keywords{prediction markets, large language model agents, autonomous trading,
