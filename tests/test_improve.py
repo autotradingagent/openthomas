@@ -525,8 +525,11 @@ def test_engine_uses_promoted_template():
 
     engine = ForecastEngine(ModelConfig(provider="openai", ensemble_size=1),
                             prompt_fn=lambda: Holder.prompt)
-    engine.client = type("C", (), {"complete": staticmethod(
-        lambda system, user: seen.update(user=user) or '{"probability": 0.5}')})()
+    engine.client = type("C", (), {
+        "complete": staticmethod(
+            lambda system, user: seen.update(user=user) or '{"probability": 0.5}'),
+        "status": {"active": "primary", "model": "stub"},
+    })()
     market = Market(id="m", platform="kalshi", question="Will it rain?",
                     category="weather")
     engine.forecast(market)

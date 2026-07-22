@@ -130,9 +130,17 @@ class ForecastEngine:
         )
         def one_sample(_i: int) -> dict | None:
             try:
-                return self._parse(self._complete(SYSTEM, prompt))
+                text = self._complete(SYSTEM, prompt)
             except (httpx.HTTPError, CompletionError):
                 return None
+            parsed = self._parse(text)
+            if parsed is None:
+                return None
+            # Tag with whichever model actually answered — during failover
+            # that's the fallback, not self.config.model, and the journal's
+            # `model` column is the record of what really produced a forecast.
+            parsed["_model"] = self.client.status["model"]
+            return parsed
 
         n = max(self.config.ensemble_size, 1)
         # Samples are independent — run them concurrently (a local reasoning
@@ -159,5 +167,5 @@ class ForecastEngine:
             invalidation=str(best.get("invalidation", "")),
             reasoning=str(best.get("reasoning", "")),
             samples=probs,
-            model=self.config.model,
+            model=best.get("_model") or self.config.model,
         )

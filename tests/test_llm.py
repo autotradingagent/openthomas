@@ -291,3 +291,20 @@ def test_forecast_survives_cli_failure():
     engine.client = CompletionClient(cfg, run=StubRun(raises=FileNotFoundError()))
     m = Market(id="x", platform="kalshi", question="?", yes_bid=0.4, yes_ask=0.42)
     assert engine.forecast(m) is None
+
+
+def test_forecast_is_attributed_to_the_model_that_actually_answered(monkeypatch):
+    """When the primary is down, the journal's `model` column must say so —
+    not silently claim the primary produced a forecast the fallback made."""
+    from openthomas.forecast.engine import ForecastEngine
+    from openthomas.markets.base import Market
+
+    monkeypatch.setattr("openthomas.llm.time.sleep", lambda *_: None)
+    handler, _ = _primary_down_backup_up([], [], backup_reply='{"probability": 0.6}')
+    cfg = _failover_config(ensemble_size=1)
+    engine = ForecastEngine(cfg)
+    engine.client = CompletionClient(cfg, http=http_client(handler))
+    m = Market(id="x", platform="kalshi", question="?", yes_bid=0.4, yes_ask=0.42)
+
+    forecast = engine.forecast(m)
+    assert forecast.model == "qwen3.6-27b"  # not cfg.model ("glm-5.2")
